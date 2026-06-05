@@ -18,6 +18,13 @@
     <plugin name='ignition::gazebo::systems::Sensors' filename='ignition-gazebo-sensors-system'>
       <render_engine>ogre2</render_engine>
     </plugin>
+    <plugin name='ignition::gazebo::systems::PosePublisher'
+            filename='ignition-gazebo-pose-publisher-system'>
+      <publish_link_pose>false</publish_link_pose>
+      <publish_model_pose>true</publish_model_pose>
+      <publish_nested_model_pose>false</publish_nested_model_pose>
+      <update_frequency>50</update_frequency>
+    </plugin>
     <scene>
       <ambient>1 1 1 1</ambient>
       <background>0.3 0.7 0.9 1</background>
@@ -674,7 +681,7 @@
 
       <!-- SENSOR MOUNT (OPTIONAL) -->
         <link name="sensor_mount">
-          <pose>0.0 0 0.04 0 0 3.14159</pose>
+          <pose>0.0 0 0.04 0 0 0</pose>
         <inertial>
           <mass>0.05</mass>
           <inertia>

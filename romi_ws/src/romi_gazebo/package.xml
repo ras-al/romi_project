@@ -15,9 +15,13 @@
   <depend>ros_gz_bridge</depend>
   <depend>robot_state_publisher</depend>
   <depend>tf2_ros</depend>
+  <depend>tf2</depend>
   <depend>geometry_msgs</depend>
   <depend>nav_msgs</depend>
   <depend>sensor_msgs</depend>
+  <depend>std_srvs</depend>
+  <depend>rviz2</depend>
+  <depend>joint_state_publisher</depend>
 
   <build_depend>ignition-gazebo6</build_depend>
   <build_depend>ignition-transport11</build_depend>

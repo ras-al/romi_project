@@ -61,11 +61,9 @@ install(DIRECTORY
 
 # Install Python scripts
 install(PROGRAMS
-  scripts/warehouse_explorer.py
-  scripts/export_sensor_data.py
   scripts/odom_to_tf.py
   scripts/hold_teleop.py
-  scripts/record_video.py
+  scripts/data_recorder.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
