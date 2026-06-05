@@ -1,0 +1,45 @@
+services:
+  ros2_gazebo:
+    build:
+      context: ..
+      dockerfile: ros2_docker/Dockerfile
+      args:
+        # Use system username if available, otherwise use generic fallback
+        USERNAME: ${USER:-ros2_user}
+        USER_UID: ${UID:-1000}
+        USER_GID: ${GID:-1000}
+    container_name: ros2_gazebo_container
+    user: "${UID:-1000}:${GID:-1000}"
+    volumes:
+      # Mount the entire home directory as ros2_ws for full access
+      # This makes git commands work and provides access to all home directory contents
+      # The workspace (romi_robot_demos) will be at /ros2_ws/exploration/romi_robot_demos
+      # Workspace is accessible at /ros2_ws/exploration/romi_robot_demos
+      - ${HOME}:/ros2_ws:rw
+      # X11 forwarding for GUI applications (RViz, Gazebo GUI)
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      # Display environment (uses system USER env var, falls back to ros2_user)
+      - $HOME/.Xauthority:/home/${USER:-ros2_user}/.Xauthority:rw
+      # Alternative: create Xauthority if it doesn't exist
+      # Gazebo model database (optional, for custom models)
+      - gazebo_models:/home/${USER:-ros2_user}/.gz
+    environment:
+      - DISPLAY=${DISPLAY}
+      - ROS_DOMAIN_ID=42
+      - QT_X11_NO_MITSHM=1
+      - GZ_VERSION=fortress
+      - GZ_SIM_RESOURCE_PATH=/usr/share/gz-fortress:/home/${USER:-ros2_user}/.gz
+      - GIT_DISCOVERY_ACROSS_FILESYSTEM=1
+    network_mode: host
+    privileged: true
+    stdin_open: true
+    tty: true
+    # Uncomment if you need USB device access (for Arduino, etc.)
+    # devices:
+    #   - /dev/ttyUSB0:/dev/ttyUSB0
+    #   - /dev/ttyACM0:/dev/ttyACM0
+
+volumes:
+  gazebo_models:
+    # Persistent volume for Gazebo Fortress models and resources
+

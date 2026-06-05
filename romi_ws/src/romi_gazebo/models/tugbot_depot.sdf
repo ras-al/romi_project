@@ -1,0 +1,841 @@
+<?xml version='1.0' encoding='ASCII'?>
+<sdf version='1.7'>
+  <world name='world_demo'>
+    <physics name='1ms' type='ode'>
+      <max_step_size>0.01</max_step_size>
+      <real_time_factor>1</real_time_factor>
+      <solver>
+        <type>quick</type>
+        <iters>50</iters>
+        <sor>1.4</sor>
+        <use_dynamic_moi_rescaling>1</use_dynamic_moi_rescaling>
+      </solver>
+    </physics>
+    <plugin name='ignition::gazebo::systems::Physics' filename='libignition-gazebo-physics-system.so'/>
+    <plugin name='ignition::gazebo::systems::UserCommands' filename='libignition-gazebo-user-commands-system.so'/>
+    <plugin name='ignition::gazebo::systems::SceneBroadcaster' filename='libignition-gazebo-scene-broadcaster-system.so'/>
+    <plugin name='ignition::gazebo::systems::Imu' filename='ignition-gazebo-imu-system'/>
+    <plugin name='ignition::gazebo::systems::Sensors' filename='ignition-gazebo-sensors-system'>
+      <render_engine>ogre2</render_engine>
+    </plugin>
+    <scene>
+      <ambient>1 1 1 1</ambient>
+      <background>0.3 0.7 0.9 1</background>
+      <shadows>0</shadows>
+      <grid>1</grid>
+    </scene>
+
+    <model name='ground_plane'>
+      <static>1</static>
+      <link name='link'>
+        <collision name='collision'>
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>1 1</size>
+            </plane>
+          </geometry>
+          <surface>
+            <friction>
+              <ode>
+                <mu>10.0</mu>
+                <mu2>10.0</mu2>
+                <slip1>0.0</slip1>
+                <slip2>0.0</slip2>
+              </ode>
+            </friction>
+            <bounce/>
+            <contact>
+              <ode>
+                <kp>1000000.0</kp>
+                <kd>100.0</kd>
+              </ode>
+            </contact>
+          </surface>
+        </collision>
+      </link>
+      <pose>0 0 0 0 0 0</pose>
+    </model>
+
+    <include>
+      <uri>
+        https://fuel.ignitionrobotics.org/1.0/OpenRobotics/models/Depot
+      </uri>
+      <pose>7.19009 1.09982 0 0 0 0</pose>
+    </include>
+
+    <model name='depot_collision'>
+      <static>1</static>
+      <pose>7.19009 1.09982 0 0 0 0</pose>
+      <link name='collision_link'>
+        <pose>0 0 0 0 0 0</pose>
+        <collision name='wall1'>
+          <pose>0 -7.6129 4.5 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>30.167 0.08 9</size>
+            </box>
+          </geometry>
+        </collision>
+        <collision name='wall2'>
+          <pose>0 7.2875 4.5 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>30.167 0.08 9</size>
+            </box>
+          </geometry>
+        </collision>
+        <collision name='wall3'>
+          <pose>-15 0 4.5 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.08 15.360 9</size>
+            </box>
+          </geometry>
+        </collision>
+        <collision name='wall4'>
+          <pose>15 0 4.5 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.08 15.360 9</size>
+            </box>
+          </geometry>
+        </collision>
+        <collision name='boxes1'>
+          <pose>0.22268 -4.7268 0.68506 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>1.288 1.422 1.288</size>
+            </box>
+          </geometry>
+        </collision>
+        <collision name='boxes2'>
+          <pose>3.1727 -4.7268 0.68506 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>1.288 1.422 1.288</size>
+            </box>
+          </geometry>
+        </collision>
+        <collision name='boxes3'>
+          <pose>5.95268 -4.7268 0.68506 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>1.288 1.422 1.288</size>
+            </box>
+          </geometry>
+        </collision>
+        <collision name='boxes4'>
+          <pose>8.55887 -4.7268 0.68506 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>1.288 1.422 1.288</size>
+            </box>
+          </geometry>
+        </collision>
+        <collision name='boxes5'>
+          <pose>11.326 -4.7268 0.68506 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>1.288 1.422 1.288</size>
+            </box>
+          </geometry>
+        </collision>
+        <collision name='boxes6'>
+          <pose>0.22268 -2.37448 0.68506 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>1.288 1.422 1.288</size>
+            </box>
+          </geometry>
+        </collision>
+        <collision name='boxes7'>
+          <pose>3.1727 -2.37448 0.68506 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>1.288 1.422 1.288</size>
+            </box>
+          </geometry>
+        </collision>
+        <collision name='boxes8'>
+          <pose>5.95268 -2.37448 0.68506 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>1.288 1.422 1.288</size>
+            </box>
+          </geometry>
+        </collision>
+        <collision name='boxes9'>
+          <pose>8.55887 -2.37448 0.68506 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>1.288 1.422 1.288</size>
+            </box>
+          </geometry>
+        </collision>
+        <collision name='boxes10'>
+          <pose>11.326 -2.37448 0.68506 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>1.288 1.422 1.288</size>
+            </box>
+          </geometry>
+        </collision>
+        <collision name='boxes11'>
+          <pose>-1.2268 4.1557 0.68506 0 0 -1.02799893</pose>
+          <geometry>
+            <box>
+              <size>1.288 1.422 1.288</size>
+            </box>
+          </geometry>
+        </collision>
+        <collision name='pilar1'>
+          <pose>-7.5402 3.6151 1 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.465 0.465 2</size>
+            </box>
+          </geometry>
+        </collision>
+        <collision name='pilar2'>
+          <pose>7.4575 3.6151 1 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.465 0.465 2</size>
+            </box>
+          </geometry>
+        </collision>
+        <collision name='pilar3'>
+          <pose>-7.5402 -3.8857 1 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.465 0.465 2</size>
+            </box>
+          </geometry>
+        </collision>
+        <collision name='pilar4'>
+          <pose>7.4575 -3.8857 1 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.465 0.465 2</size>
+            </box>
+          </geometry>
+        </collision>
+        <collision name='pallet_mover1'>
+          <pose>-0.6144 -2.389 0.41838 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.363 0.440 0.719</size>
+            </box>
+          </geometry>
+        </collision>
+        <collision name='pallet_mover2'>
+          <pose>-1.6004 4.8225 0.41838 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.363 0.244 0.719</size>
+            </box>
+          </geometry>
+        </collision>
+        <collision name='stairs'>
+          <pose>13.018 3.1652 0.25 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>1.299 0.6 0.5</size>
+            </box>
+          </geometry>
+        </collision>
+        <collision name='shelfs1'>
+          <pose>1.4662 -0.017559 0.5 0 0 0</pose>
+          <geometry>
+            <cylinder>
+              <radius>0.03</radius>
+              <length>1</length>
+            </cylinder>
+          </geometry>
+        </collision>
+        <collision name='shelfs2'>
+          <pose>2.6483 -0.017559 0.5 0 0 0</pose>
+          <geometry>
+            <cylinder>
+              <radius>0.03</radius>
+              <length>1</length>
+            </cylinder>
+          </geometry>
+        </collision>
+        <collision name='shelfs3'>
+          <pose>5.3247 -0.017559 0.5 0 0 0</pose>
+          <geometry>
+            <cylinder>
+              <radius>0.03</radius>
+              <length>1</length>
+            </cylinder>
+          </geometry>
+        </collision>
+        <collision name='shelfs4'>
+          <pose>6.5063 -0.017559 0.5 0 0 0</pose>
+          <geometry>
+            <cylinder>
+              <radius>0.03</radius>
+              <length>1</length>
+            </cylinder>
+          </geometry>
+        </collision>
+        <collision name='shelfs5'>
+          <pose>9.0758 -0.017559 0.5 0 0 0</pose>
+          <geometry>
+            <cylinder>
+              <radius>0.03</radius>
+              <length>1</length>
+            </cylinder>
+          </geometry>
+        </collision>
+        <collision name='shelfs6'>
+          <pose>10.258 -0.017559 0.5 0 0 0</pose>
+          <geometry>
+            <cylinder>
+              <radius>0.03</radius>
+              <length>1</length>
+            </cylinder>
+          </geometry>
+        </collision>
+        <collision name='shelfs7'>
+          <pose>1.4662 2.5664 0.5 0 0 0</pose>
+          <geometry>
+            <cylinder>
+              <radius>0.03</radius>
+              <length>1</length>
+            </cylinder>
+          </geometry>
+        </collision>
+        <collision name='shelfs8'>
+          <pose>2.6483 2.5664 0.5 0 0 0</pose>
+          <geometry>
+            <cylinder>
+              <radius>0.03</radius>
+              <length>1</length>
+            </cylinder>
+          </geometry>
+        </collision>
+        <collision name='shelfs9'>
+          <pose>5.3247 2.5664 0.5 0 0 0</pose>
+          <geometry>
+            <cylinder>
+              <radius>0.03</radius>
+              <length>1</length>
+            </cylinder>
+          </geometry>
+        </collision>
+        <collision name='shelfs10'>
+          <pose>6.5063 2.5664 0.5 0 0 0</pose>
+          <geometry>
+            <cylinder>
+              <radius>0.03</radius>
+              <length>1</length>
+            </cylinder>
+          </geometry>
+        </collision>
+        <collision name='shelfs11'>
+          <pose>9.0758 2.5664 0.5 0 0 0</pose>
+          <geometry>
+            <cylinder>
+              <radius>0.03</radius>
+              <length>1</length>
+            </cylinder>
+          </geometry>
+        </collision>
+        <collision name='shelfs12'>
+          <pose>10.258 2.5664 0.5 0 0 0</pose>
+          <geometry>
+            <cylinder>
+              <radius>0.03</radius>
+              <length>1</length>
+            </cylinder>
+          </geometry>
+        </collision>
+        <collision name='shelfs13'>
+          <pose>1.4662 5.1497 0.5 0 0 0</pose>
+          <geometry>
+            <cylinder>
+              <radius>0.03</radius>
+              <length>1</length>
+            </cylinder>
+          </geometry>
+        </collision>
+        <collision name='shelfs14'>
+          <pose>2.6483 5.1497 0.5 0 0 0</pose>
+          <geometry>
+            <cylinder>
+              <radius>0.03</radius>
+              <length>1</length>
+            </cylinder>
+          </geometry>
+        </collision>
+        <collision name='shelfs15'>
+          <pose>5.3247 5.1497 0.5 0 0 0</pose>
+          <geometry>
+            <cylinder>
+              <radius>0.03</radius>
+              <length>1</length>
+            </cylinder>
+          </geometry>
+        </collision>
+        <collision name='shelfs16'>
+          <pose>6.5063 5.1497 0.5 0 0 0</pose>
+          <geometry>
+            <cylinder>
+              <radius>0.03</radius>
+              <length>1</length>
+            </cylinder>
+          </geometry>
+        </collision>
+        <collision name='shelfs17'>
+          <pose>9.0758 5.1497 0.5 0 0 0</pose>
+          <geometry>
+            <cylinder>
+              <radius>0.03</radius>
+              <length>1</length>
+            </cylinder>
+          </geometry>
+        </collision>
+        <collision name='shelfs18'>
+          <pose>10.258 5.1497 0.5 0 0 0</pose>
+          <geometry>
+            <cylinder>
+              <radius>0.03</radius>
+              <length>1</length>
+            </cylinder>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+
+    <!-- Romi Robot Model -->
+    <model name="romi">
+      <pose>1 1 0.035 0 0 0</pose>
+      
+      <!-- BASE LINK (CHASSIS) -->
+      <link name="base_link">
+        <pose>0 0 0 0 0 0</pose>
+        <inertial>
+          <pose>0 0 0.02 0 0 0</pose>
+          <mass>0.8</mass>
+          <inertia>
+            <ixx>0.00146</ixx>
+            <ixy>0.0</ixy>
+            <ixz>0.0</ixz>
+            <iyy>0.00189</iyy>
+            <iyz>0.0</iyz>
+            <izz>0.00288</izz>
+          </inertia>
+        </inertial>
+        <visual name="visual_base_link">
+          <pose>0.05 0.155 -0.06 1.5708 0 -1.5708</pose>
+          <geometry>
+            <mesh>
+              <uri>model://romi_gazebo/meshes/visual/chasis.stl</uri>
+              <scale>0.001 0.001 0.001</scale>
+            </mesh>
+          </geometry>
+          <material>
+            <ambient>0.2 0.2 0.8 1.0</ambient>
+            <diffuse>0.2 0.2 0.8 1.0</diffuse>
+          </material>
+        </visual>
+        <collision name="collision_base_link">
+          <pose>0 0 0.02 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.16 0.14 0.04</size>
+            </box>
+          </geometry>
+        </collision>
+      </link>
+
+      <!-- LEFT WHEEL -->
+      <link name="left_wheel">
+        <pose>0 -0.07 0.035 1.5708 0 0</pose>
+        <inertial>
+          <mass>0.05</mass>
+          <inertia>
+            <ixx>3.125e-05</ixx>
+            <ixy>0.0</ixy>
+            <ixz>0.0</ixz>
+            <iyy>3.125e-05</iyy>
+            <iyz>0.0</iyz>
+            <izz>6.125e-05</izz>
+          </inertia>
+        </inertial>
+        <visual name="visual_left_wheel">
+          <pose>0 0 0 0 1.5708 4.71239</pose>
+          <geometry>
+            <mesh>
+              <uri>model://romi_gazebo/meshes/visual/wheel.stl</uri>
+              <scale>-0.001 0.001 0.001</scale>
+            </mesh>
+          </geometry>
+          <material>
+            <ambient>0.1 0.1 0.1 1.0</ambient>
+            <diffuse>0.1 0.1 0.1 1.0</diffuse>
+          </material>
+        </visual>
+        <collision name="collision_left_wheel">
+          <geometry>
+            <cylinder>
+              <radius>0.035</radius>
+              <length>0.015</length>
+            </cylinder>
+          </geometry>
+          <surface>
+            <friction>
+              <ode>
+                <mu>15.0</mu>
+                <mu2>15.0</mu2>
+                <slip1>0.0</slip1>
+                <slip2>0.0</slip2>
+              </ode>
+            </friction>
+            <contact>
+              <ode>
+                <kp>1000000.0</kp>
+                <kd>100.0</kd>
+                <min_depth>0.001</min_depth>
+                <max_vel>1.0</max_vel>
+              </ode>
+            </contact>
+          </surface>
+        </collision>
+      </link>
+
+      <joint name="left_wheel_joint" type="revolute">
+        <parent>base_link</parent>
+        <child>left_wheel</child>
+        <axis>
+          <xyz>0 0 1</xyz>
+          <limit>
+            <lower>-1e16</lower>
+            <upper>1e16</upper>
+          </limit>
+          <dynamics>
+            <damping>0.01</damping>
+            <friction>0.01</friction>
+          </dynamics>
+        </axis>
+      </joint>
+
+      <!-- RIGHT WHEEL -->
+      <link name="right_wheel">
+        <pose>0 0.07 0.035 1.5708 0 0</pose>
+        <inertial>
+          <mass>0.05</mass>
+          <inertia>
+            <ixx>3.125e-05</ixx>
+            <ixy>0.0</ixy>
+            <ixz>0.0</ixz>
+            <iyy>3.125e-05</iyy>
+            <iyz>0.0</iyz>
+            <izz>6.125e-05</izz>
+          </inertia>
+        </inertial>
+        <visual name="visual_right_wheel">
+          <pose>0 0 0 0 1.5708 4.71239</pose>
+          <geometry>
+            <mesh>
+              <uri>model://romi_gazebo/meshes/visual/wheel.stl</uri>
+              <scale>0.001 0.001 0.001</scale>
+            </mesh>
+          </geometry>
+          <material>
+            <ambient>0.1 0.1 0.1 1.0</ambient>
+            <diffuse>0.1 0.1 0.1 1.0</diffuse>
+          </material>
+        </visual>
+        <collision name="collision_right_wheel">
+          <geometry>
+            <cylinder>
+              <radius>0.035</radius>
+              <length>0.015</length>
+            </cylinder>
+          </geometry>
+          <surface>
+            <friction>
+              <ode>
+                <mu>10.0</mu>
+                <mu2>10.0</mu2>
+                <slip1>0.0</slip1>
+                <slip2>0.0</slip2>
+              </ode>
+            </friction>
+            <contact>
+              <ode>
+                <kp>1000000.0</kp>
+                <kd>100.0</kd>
+                <min_depth>0.001</min_depth>
+                <max_vel>1.0</max_vel>
+              </ode>
+            </contact>
+          </surface>
+        </collision>
+      </link>
+
+      <joint name="right_wheel_joint" type="revolute">
+        <parent>base_link</parent>
+        <child>right_wheel</child>
+        <axis>
+          <xyz>0 0 1</xyz>
+          <limit>
+            <lower>-1e16</lower>
+            <upper>1e16</upper>
+          </limit>
+          <dynamics>
+            <damping>0.01</damping>
+            <friction>0.01</friction>
+          </dynamics>
+        </axis>
+      </joint>
+
+      <!-- FRONT CASTER BALL -->
+      <link name="front_caster_ball">
+        <pose>0.065 0 0.0127 0 0 0</pose>
+        <inertial>
+          <mass>0.0135</mass>
+          <inertia>
+            <ixx>4.34e-07</ixx>
+            <ixy>0.0</ixy>
+            <ixz>0.0</ixz>
+            <iyy>4.34e-07</iyy>
+            <iyz>0.0</iyz>
+            <izz>4.34e-07</izz>
+          </inertia>
+        </inertial>
+        <visual name="visual_front_caster">
+          <geometry>
+            <sphere>
+              <radius>0.0127</radius>
+            </sphere>
+          </geometry>
+          <material>
+            <ambient>0.5 0.5 0.5 1.0</ambient>
+            <diffuse>0.5 0.5 0.5 1.0</diffuse>
+          </material>
+        </visual>
+        <collision name="collision_front_caster">
+          <geometry>
+            <sphere>
+              <radius>0.0127</radius>
+            </sphere>
+          </geometry>
+        </collision>
+      </link>
+
+      <joint name="front_caster_ball_joint" type="fixed">
+        <parent>base_link</parent>
+        <child>front_caster_ball</child>
+      </joint>
+
+      <!-- REAR CASTER BALL -->
+      <link name="rear_caster_ball">
+        <pose>-0.042 0 0.0127 0 0 0</pose>
+        <inertial>
+          <mass>0.0135</mass>
+          <inertia>
+            <ixx>4.34e-07</ixx>
+            <ixy>0.0</ixy>
+            <ixz>0.0</ixz>
+            <iyy>4.34e-07</iyy>
+            <iyz>0.0</iyz>
+            <izz>4.34e-07</izz>
+          </inertia>
+        </inertial>
+        <visual name="visual_rear_caster">
+          <geometry>
+            <sphere>
+              <radius>0.0127</radius>
+            </sphere>
+          </geometry>
+          <material>
+            <ambient>0.9 0.9 0.9 1.0</ambient>
+            <diffuse>0.9 0.9 0.9 1.0</diffuse>
+          </material>
+        </visual>
+        <collision name="collision_rear_caster">
+          <geometry>
+            <sphere>
+              <radius>0.0127</radius>
+            </sphere>
+          </geometry>
+        </collision>
+      </link>
+
+      <joint name="rear_caster_ball_joint" type="fixed">
+        <parent>base_link</parent>
+        <child>rear_caster_ball</child>
+      </joint>
+
+      <!-- SENSOR MOUNT (OPTIONAL) -->
+        <link name="sensor_mount">
+          <pose>0.0 0 0.04 0 0 3.14159</pose>
+        <inertial>
+          <mass>0.05</mass>
+          <inertia>
+            <ixx>3.667e-05</ixx>
+            <ixy>0.0</ixy>
+            <ixz>0.0</ixz>
+            <iyy>3.667e-05</iyy>
+            <iyz>0.0</iyz>
+            <izz>6.667e-05</izz>
+          </inertia>
+        </inertial>
+        
+        <sensor name="realsense_d435" type="rgbd_camera">
+          <pose>0 0 0.02 0 0 0</pose>
+          <always_on>1</always_on>
+          <update_rate>15</update_rate>
+          <camera>
+            <horizontal_fov>1.047</horizontal_fov>
+            <image>
+              <width>640</width>
+              <height>480</height>
+            </image>
+            <clip>
+              <near>0.1</near>
+              <far>10.0</far>
+            </clip>
+          </camera>
+          <topic>depth_camera</topic> 
+        </sensor>
+
+        <sensor name="lidar" type="gpu_lidar">
+          <pose>0 0 0.05 0 0 0</pose> 
+          <always_on>true</always_on>
+          <update_rate>10</update_rate>
+          <visualize>true</visualize> 
+          <lidar>
+            <scan>
+              <horizontal>
+                <samples>360</samples>
+                <resolution>1</resolution>
+                <min_angle>-3.14159</min_angle>
+                <max_angle>3.14159</max_angle>
+              </horizontal>
+            </scan>
+            <range>
+              <min>0.12</min>
+              <max>10.0</max>
+              <resolution>0.01</resolution>
+            </range>
+          </lidar>
+          <topic>lidar/scan</topic>
+        </sensor>
+      </link>
+
+      <joint name="sensor_mount_joint" type="fixed">
+        <parent>base_link</parent>
+        <child>sensor_mount</child>
+      </joint>
+
+      <!-- IMU LINK (OPTIONAL SENSOR) -->
+      <link name="imu_link">
+        <pose>0.0 0 0.07 0 0 0</pose>
+        <inertial>
+          <mass>0.005</mass>
+          <inertia>
+            <ixx>2.292e-07</ixx>
+            <ixy>0.0</ixy>
+            <ixz>0.0</ixz>
+            <iyy>2.292e-07</iyy>
+            <iyz>0.0</iyz>
+            <izz>4.167e-07</izz>
+          </inertia>
+        </inertial>
+        <visual name="visual_imu">
+          <pose>0.095 0.105 -0.125 1.5708 0 -1.5708</pose>
+          <geometry>
+            <mesh>
+              <uri>model://romi_gazebo/meshes/visual/control_board.stl</uri>
+              <scale>0.001 0.001 0.001</scale>
+            </mesh>
+          </geometry>
+          <material>
+            <ambient>0.7 0.7 0.7 1.0</ambient>
+            <diffuse>0.7 0.7 0.7 1.0</diffuse>
+          </material>
+        </visual>
+        <sensor name="imu_sensor" type="imu">
+          <always_on>1</always_on>
+          <update_rate>100</update_rate>
+          <imu>
+            <angular_velocity>
+              <x>
+                <noise type="gaussian">
+                  <mean>0.0</mean>
+                  <stddev>0.01</stddev>
+                </noise>
+              </x>
+              <y>
+                <noise type="gaussian">
+                  <mean>0.0</mean>
+                  <stddev>0.01</stddev>
+                </noise>
+              </y>
+              <z>
+                <noise type="gaussian">
+                  <mean>0.0</mean>
+                  <stddev>0.01</stddev>
+                </noise>
+              </z>
+            </angular_velocity>
+            <linear_acceleration>
+              <x>
+                <noise type="gaussian">
+                  <mean>0.0</mean>
+                  <stddev>0.01</stddev>
+                </noise>
+              </x>
+              <y>
+                <noise type="gaussian">
+                  <mean>0.0</mean>
+                  <stddev>0.01</stddev>
+                </noise>
+              </y>
+              <z>
+                <noise type="gaussian">
+                  <mean>0.0</mean>
+                  <stddev>0.01</stddev>
+                </noise>
+              </z>
+            </linear_acceleration>
+          </imu>
+          <plugin
+            filename="ignition-gazebo-imu-system"
+            name="ignition::gazebo::systems::Imu">
+            <topic>imu</topic>
+          </plugin>
+        </sensor>
+      </link>
+
+      <joint name="imu_joint" type="fixed">
+        <parent>sensor_mount</parent>
+        <child>imu_link</child>
+      </joint>
+
+      <!-- Romi Encoder Plugin -->
+      <!-- Uses WheelWithEncoder class to model DC motor wheel encoder pairs -->
+      <!-- Implements hybrid approach: cmd_vel sets targets, physics provides feedback -->
+      <plugin
+        filename="libromi_encoder_plugin.so"
+        name="romi::gazebo::RomiEncoderPlugin">
+        <wheel_radius>0.035</wheel_radius>
+        <wheel_base>0.14</wheel_base>
+        <encoder_ticks_per_rotation>1440</encoder_ticks_per_rotation>
+        <control_dt>0.025</control_dt>
+        <pid_kp>0.1613</pid_kp>
+        <pid_ki>12.9032</pid_ki>
+        <pid_kd>0.0</pid_kd>
+        <cmd_vel_topic>/model/romi/cmd_vel</cmd_vel_topic>
+        <odometry_topic>/model/romi/odometry</odometry_topic>
+      </plugin>
+
+    </model>
+  </world>
+</sdf>
