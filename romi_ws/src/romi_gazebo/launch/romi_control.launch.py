@@ -72,17 +72,8 @@ def generate_launch_description():
     )
  
     # ── TF chain ──────────────────────────────────────────────────
-    # Seed map→odom so SLAM doesn't hit "no transform available" on
-    # the first few scans.  SLAM overrides this immediately.
-    map_to_odom_init = Node(
-        package='tf2_ros',
-        executable='static_transform_publisher',
-        arguments=['--x', '0', '--y', '0', '--z', '0',
-                   '--roll', '0', '--pitch', '0', '--yaw', '0',
-                   '--frame-id', 'map', '--child-frame-id', 'odom'],
-        parameters=[sim_time],
-        output='screen'
-    )
+    # map->odom is handled dynamically by slam_toolbox.
+    # Do NOT seed it with a static transform as it causes jumping/double mapping.
  
     odom_tf = Node(
         package='romi_gazebo',
@@ -167,12 +158,12 @@ def generate_launch_description():
         package='romi_gazebo',
         executable='autonomous_explorer.py',
         parameters=[sim_time, {
-            'angular_speed': 0.4,       # was 0.7 — slower turns = cleaner scans
-            'linear_speed':  0.18,
-            'turn_duration': 2.5,       # longer turn to fully clear obstacles
+            'angular_speed': 0.6,  
+            'linear_speed':  0.25,
+            'turn_duration': 2.5,
         }],
         output='screen',
-        condition=IfCondition(LaunchConfiguration('explore'))
+        condition=IfCondition(LaunchConfiguration('explore')) 
     )
  
     # ── RViz ──────────────────────────────────────────────────────
@@ -190,12 +181,11 @@ def generate_launch_description():
         bridge,
         joint_state_publisher,
         robot_state_publisher,
-        map_to_odom_init,
         odom_tf,
         base_to_sensor_mount,
         sensor_mount_to_realsense,
         sensor_mount_to_lidar,
-        scan_remapper,          # ← new: fixes frame_id before SLAM sees it
+        scan_remapper,
         slam_toolbox,
         data_recorder,
         explorer,

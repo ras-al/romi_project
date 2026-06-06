@@ -40,8 +40,8 @@ class ReactiveExplorer(Node):
         self.declare_parameter('odom_topic',          '/model/romi/odometry')
         self.declare_parameter('linear_speed',         0.18)
         self.declare_parameter('angular_speed',        0.7)
-        self.declare_parameter('obstacle_threshold',   0.50)  # metres
-        self.declare_parameter('side_threshold',       0.25)  # wall-follow margin
+        self.declare_parameter('obstacle_threshold',   1.5)  # metres
+        self.declare_parameter('side_threshold',       0.5)  # wall-follow margin
         self.declare_parameter('turn_duration',        2.0)   # seconds
         self.declare_parameter('stuck_timeout',        4.0)   # seconds without movement
         self.declare_parameter('stuck_move_threshold', 0.04)  # metres — below = stuck
@@ -165,9 +165,17 @@ class ReactiveExplorer(Node):
         if self.exploration_timeout > 0 and self.start_time is not None:
             elapsed = time.monotonic() - self.start_time
             if elapsed > self.exploration_timeout:
-                self.get_logger().info('Exploration timeout reached — stopping.')
+                self.get_logger().info('Exploration timeout reached — stopping and saving map...')
                 self._trigger_recording(start=False)
                 self.cmd_pub.publish(Twist())
+                
+                # Auto-save the map
+                import subprocess
+                timestamp = time.strftime("%Y%m%d_%H%M%S")
+                map_name = f"romi_map_{timestamp}"
+                self.get_logger().info(f'Saving map as {map_name}.pgm / .yaml...')
+                subprocess.Popen(['ros2', 'run', 'nav2_map_server', 'map_saver_cli', '-f', map_name])
+                
                 self.state = State.WAITING
                 return
  
@@ -184,39 +192,32 @@ class ReactiveExplorer(Node):
  
         thr = self.obstacle_threshold
  
-        # ── Stuck detection ───────────────────────────────────────
-        if self.state == State.EXPLORING:
-            if (time.monotonic() - self.last_move_time) > self.stuck_timeout:
-                self.get_logger().warn('Stuck detected — initiating recovery spin')
-                self.state       = State.RECOVERING
-                self.state_timer = 3.0
-                # Spin away from the side with the closer wall
-                self.turn_direction = 1.0 if right < left else -1.0
-                self.last_move_time = time.monotonic()  # reset
+        # ── Global Emergency Collision Avoidance ──────────────────
+        min_front = min(front, front_left, front_right)
+        if min_front < 0.22 and self.state not in [State.REVERSING, State.RECOVERING]:
+            self.get_logger().warn(f'Collision imminent ({min_front:.2f}m) — Emergency Reverse!')
+            self.state = State.REVERSING
+            self.state_timer = 1.5
+            # Ensure it turns away from the obstacle after reversing
+            self.turn_direction = -1.0 if front_left < front_right else 1.0
  
         # ── State machine ─────────────────────────────────────────
  
         if self.state == State.EXPLORING:
-            if front < thr:
-                if front < 0.20:
-                    # Emergency reverse
-                    self.state       = State.REVERSING
-                    self.state_timer = 1.2
-                    self.get_logger().info(f'Too close ({front:.2f} m) — reversing')
-                else:
-                    # Obstacle: decide which way to turn
-                    self.state       = State.TURNING
-                    jitter           = 0.6 + 0.8 * random.random()
-                    self.state_timer = self.turn_duration * jitter
+            if front < thr or front_left < thr * 0.7 or front_right < thr * 0.7:
+                # Obstacle detected ahead or diagonally: decide which way to turn
+                self.state       = State.TURNING
+                jitter           = 0.6 + 0.8 * random.random()
+                self.state_timer = self.turn_duration * jitter
  
-                    # Prefer the side with more clearance
-                    open_left  = min(front_left,  left)
-                    open_right = min(front_right, right)
-                    self.turn_direction = 1.0 if open_left >= open_right else -1.0
+                # Prefer the side with more clearance
+                open_left  = min(front_left,  left)
+                open_right = min(front_right, right)
+                self.turn_direction = 1.0 if open_left >= open_right else -1.0
  
-                    side = 'LEFT' if self.turn_direction > 0 else 'RIGHT'
-                    self.get_logger().info(
-                        f'Obstacle {front:.2f} m — turning {side} for {self.state_timer:.1f}s')
+                side = 'LEFT' if self.turn_direction > 0 else 'RIGHT'
+                self.get_logger().info(
+                    f'Obstacle {front:.2f} m — turning {side} for {self.state_timer:.1f}s')
             else:
                 # ── Forward + gentle wall-follow ──────────────────
                 twist.linear.x = self.linear_speed
@@ -240,8 +241,8 @@ class ReactiveExplorer(Node):
             self.state_timer -= self.timer_period
             twist.angular.z   = self.angular_speed * self.turn_direction
  
-            # Early exit if path is clear enough
-            clear_ahead = front > thr * 1.6
+            # Early exit if path is clear enough across the entire front
+            clear_ahead = front > thr * 1.2 and front_left > thr and front_right > thr
             if self.state_timer <= 0 or clear_ahead:
                 self.state = State.EXPLORING
                 self.get_logger().info('Turn done — resuming exploration')

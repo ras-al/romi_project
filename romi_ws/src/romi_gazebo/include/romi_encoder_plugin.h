@@ -68,13 +68,13 @@ private:
   
   // Conversion functions
   double AngularVelocityToEncoderTicks(double angular_vel_rad_per_sec, double dt) const;
-  double EncoderTicksToAngularVelocity(int encoder_ticks, double dt) const;
+  double EncoderTicksToAngularVelocity(double encoder_ticks, double dt) const;
   double EncoderTicksToDistance(int encoder_ticks) const;
   int DistanceToEncoderTicks(double distance_m) const;
   int AngularVelocityToEncoderTicksInt(double angular_vel_rad_per_sec, double dt) const;
 
   // Odometry computation
-  void UpdateOdometry(int left_ticks, int right_ticks, double dt);
+  void UpdateOdometryFloating(double left_angular_vel, double right_angular_vel, double dt);
   void PublishOdometry(const ignition::gazebo::UpdateInfo &_info);
 
   // Entity and component references
@@ -121,8 +121,8 @@ private:
   // Last computed values for maintaining continuous velocity commands
   double last_left_target_angular_vel_;
   double last_right_target_angular_vel_;
-  int last_left_encoder_ticks_;
-  int last_right_encoder_ticks_;
+  double ideal_left_angular_vel_;
+  double ideal_right_angular_vel_;
   bool first_encoder_update_;
 };
 

@@ -44,8 +44,8 @@ RomiEncoderPlugin::RomiEncoderPlugin()
       right_joint_velocity_(0.0),
       last_left_target_angular_vel_(0.0),
       last_right_target_angular_vel_(0.0),
-      last_left_encoder_ticks_(0),
-      last_right_encoder_ticks_(0),
+      ideal_left_angular_vel_(0.0),
+      ideal_right_angular_vel_(0.0),
       first_encoder_update_(true),
       cmd_vel_topic_("/model/romi/cmd_vel"),
       odometry_topic_("/model/romi/odometry") {
@@ -144,11 +144,9 @@ void RomiEncoderPlugin::PreUpdate(
   }
   
   // Always maintain velocity commands (set every PreUpdate)
-  // But only update encoder models at 25ms intervals
+  // Use the smoothed PID output to drive the joints
   double left_target_angular_vel = last_left_target_angular_vel_;
   double right_target_angular_vel = last_right_target_angular_vel_;
-  int left_encoder_ticks = last_left_encoder_ticks_;
-  int right_encoder_ticks = last_right_encoder_ticks_;
   
   // Force first update to happen immediately
   if (first_encoder_update_) {
@@ -172,31 +170,23 @@ void RomiEncoderPlugin::PreUpdate(
       // Both targets are zero - set velocity commands to zero immediately
       left_target_angular_vel = 0.0;
       right_target_angular_vel = 0.0;
-      left_encoder_ticks = 0;
-      right_encoder_ticks = 0;
     } else {
-      // Convert joint velocities (rad/s) to encoder ticks per sample
-      int left_actual_ticks = AngularVelocityToEncoderTicksInt(left_joint_velocity_, encoder_dt);
-      int right_actual_ticks = AngularVelocityToEncoderTicksInt(right_joint_velocity_, encoder_dt);
+      // Update wheel encoder models with actual velocities as feedback
+      // This applies the PID motor dynamics smoothly (noise was removed)
+      float left_vel_ticks = left_wheel_->update(static_cast<float>(AngularVelocityToEncoderTicks(left_joint_velocity_, encoder_dt)));
+      float right_vel_ticks = right_wheel_->update(static_cast<float>(AngularVelocityToEncoderTicks(right_joint_velocity_, encoder_dt)));
       
-      // Update wheel encoder models with actual velocities as feedback (hybrid approach)
-      left_encoder_ticks = left_wheel_->update(static_cast<float>(left_actual_ticks));
-      right_encoder_ticks = right_wheel_->update(static_cast<float>(right_actual_ticks));
-      
-      // Apply motor dynamics output as joint velocity commands
-      // Convert encoder ticks back to angular velocities
-      left_target_angular_vel = EncoderTicksToAngularVelocity(left_encoder_ticks, encoder_dt);
-      right_target_angular_vel = EncoderTicksToAngularVelocity(right_encoder_ticks, encoder_dt);
+      left_target_angular_vel = EncoderTicksToAngularVelocity(left_vel_ticks, encoder_dt);
+      right_target_angular_vel = EncoderTicksToAngularVelocity(right_vel_ticks, encoder_dt);
     }
     
-    // Store for next iteration
+    // Store for next iteration (legacy variables kept for structure)
     last_left_target_angular_vel_ = left_target_angular_vel;
     last_right_target_angular_vel_ = right_target_angular_vel;
-    last_left_encoder_ticks_ = left_encoder_ticks;
-    last_right_encoder_ticks_ = right_encoder_ticks;
     
-    // Update odometry from encoder readings
-    UpdateOdometry(left_encoder_ticks, right_encoder_ticks, encoder_dt);
+    // Update odometry using the bounded, smoothed PID commands rather than raw physics joints.
+    // This prevents massive odometry spikes (red line shooting to infinity) if Gazebo glitches during a collision.
+    UpdateOdometryFloating(left_target_angular_vel, right_target_angular_vel, encoder_dt);
     
     prev_time_ = current_time;
   }
@@ -244,11 +234,13 @@ void RomiEncoderPlugin::OnCmdVel(const msgs::Twist &_msg) {
   double left_angular_vel = -v_left / wheel_radius_;
   double right_angular_vel = -v_right / wheel_radius_;
   
-  // Convert angular velocities to encoder ticks per sample
+  // Store exact desired angular velocities to send smoothly to Gazebo
+  ideal_left_angular_vel_ = left_angular_vel;
+  ideal_right_angular_vel_ = right_angular_vel;
+  
+  // Set targets in wheel encoder models (legacy, kept for odometry noise simulation if desired)
   int left_target_ticks = AngularVelocityToEncoderTicksInt(left_angular_vel, control_dt_);
   int right_target_ticks = AngularVelocityToEncoderTicksInt(right_angular_vel, control_dt_);
-  
-  // Set targets in wheel encoder models
   left_wheel_->setTarget(left_target_ticks);
   right_wheel_->setTarget(right_target_ticks);
 }
@@ -354,9 +346,9 @@ int RomiEncoderPlugin::AngularVelocityToEncoderTicksInt(
 }
 
 double RomiEncoderPlugin::EncoderTicksToAngularVelocity(
-    int encoder_ticks, double dt) const {
+    double encoder_ticks, double dt) const {
   // Convert encoder ticks per sample to ticks per second
-  double ticks_per_sec = static_cast<double>(encoder_ticks) / dt;
+  double ticks_per_sec = encoder_ticks / dt;
   // Convert to rotations per second
   double rotations_per_sec = ticks_per_sec / encoder_ticks_per_rotation_;
   // Convert to rad/s
@@ -374,19 +366,14 @@ int RomiEncoderPlugin::DistanceToEncoderTicks(double distance_m) const {
   return static_cast<int>(std::round((distance_m / wheel_circumference) * encoder_ticks_per_rotation_));
 }
 
-void RomiEncoderPlugin::UpdateOdometry(int left_ticks, int right_ticks, double dt) {
-  // Invert ticks because negative physical rotation means forward motion
-  left_ticks = -left_ticks;
-  right_ticks = -right_ticks;
+void RomiEncoderPlugin::UpdateOdometryFloating(double left_angular_vel, double right_angular_vel, double dt) {
+  // Invert velocities because negative physical rotation means forward motion
+  double left_vel = -left_angular_vel;
+  double right_vel = -right_angular_vel;
 
-  // left_ticks and right_ticks are the PID controller's output for this
-  // sample period — they represent instantaneous velocity in encoder ticks
-  // per sample, NOT cumulative ticks.  Use them directly as the distance
-  // traveled this sample.
-
-  // Convert encoder ticks (per sample) to distances
-  double left_distance = EncoderTicksToDistance(left_ticks);
-  double right_distance = EncoderTicksToDistance(right_ticks);
+  // Calculate distance traveled in this time step exactly
+  double left_distance = left_vel * wheel_radius_ * dt;
+  double right_distance = right_vel * wheel_radius_ * dt;
   
   // Differential drive forward kinematics
   double distance = (left_distance + right_distance) / 2.0;

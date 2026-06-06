@@ -454,7 +454,7 @@
 
       <!-- LEFT WHEEL -->
       <link name="left_wheel">
-        <pose>0 0.07 0.035 1.5708 0 0</pose>
+        <pose>0 0.0705 0.035 1.5708 0 0</pose>
         <inertial>
           <mass>0.05</mass>
           <inertia>
@@ -489,8 +489,8 @@
           <surface>
             <friction>
               <ode>
-                <mu>15.0</mu>
-                <mu2>15.0</mu2>
+                <mu>1.0</mu>
+                <mu2>1.0</mu2>
                 <slip1>0.0</slip1>
                 <slip2>0.0</slip2>
               </ode>
@@ -525,7 +525,7 @@
 
       <!-- RIGHT WHEEL -->
       <link name="right_wheel">
-        <pose>0 -0.07 0.035 1.5708 0 0</pose>
+        <pose>0 -0.0705 0.035 1.5708 0 0</pose>
         <inertial>
           <mass>0.05</mass>
           <inertia>
@@ -560,8 +560,8 @@
           <surface>
             <friction>
               <ode>
-                <mu>10.0</mu>
-                <mu2>10.0</mu2>
+                <mu>1.0</mu>
+                <mu2>1.0</mu2>
                 <slip1>0.0</slip1>
                 <slip2>0.0</slip2>
               </ode>
@@ -625,6 +625,14 @@
               <radius>0.0127</radius>
             </sphere>
           </geometry>
+          <surface>
+            <friction>
+              <ode>
+                <mu>0.0</mu>
+                <mu2>0.0</mu2>
+              </ode>
+            </friction>
+          </surface>
         </collision>
       </link>
 
@@ -664,6 +672,14 @@
               <radius>0.0127</radius>
             </sphere>
           </geometry>
+          <surface>
+            <friction>
+              <ode>
+                <mu>0.0</mu>
+                <mu2>0.0</mu2>
+              </ode>
+            </friction>
+          </surface>
         </collision>
       </link>
 
@@ -826,12 +842,12 @@
         filename="libromi_encoder_plugin.so"
         name="romi::gazebo::RomiEncoderPlugin">
         <wheel_radius>0.035</wheel_radius>
-        <wheel_base>0.14</wheel_base>
+        <wheel_base>0.141</wheel_base>
         <encoder_ticks_per_rotation>1440</encoder_ticks_per_rotation>
         <control_dt>0.025</control_dt>
-        <pid_kp>0.1613</pid_kp>
-        <pid_ki>12.9032</pid_ki>
-        <pid_kd>0.0</pid_kd>
+        <pid_kp>0.5</pid_kp>
+        <pid_ki>0.01</pid_ki>
+        <pid_kd>0.05</pid_kd>
         <cmd_vel_topic>/model/romi/cmd_vel</cmd_vel_topic>
         <odometry_topic>/model/romi/odometry</odometry_topic>
       </plugin>

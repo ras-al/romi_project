@@ -25,12 +25,12 @@ public:
     return static_cast<int>(pid.getTarget());
   }
   
-  int update() {
+  float update() {
     // Use internal previous velocity (for backward compatibility)
     return update(prev_vel_1);
   }
 
-  int update(float actual_velocity) {
+  float update(float actual_velocity) {
     // PID control output (PWM command)
     // Compares target (from setTarget) vs actual (from physics/feedback)
     // Error = target - actual, so we pass actual as observation
@@ -43,16 +43,10 @@ public:
     prev_pwm_1 = pwm;
     prev_vel_2 = prev_vel_1;
 
-    // Add Gaussian noise to simulate encoder noise
-    std::random_device rd{};
-    std::mt19937 gen{ rd() };
-    
-    // Only add noise when motor is running
-    float noise_std = (pid.getTarget() == 0.0f) ? 0.0f : 2.0f;
-    std::normal_distribution<float> dist(curr_vel, noise_std);
-    
-    prev_vel_1 = std::ceil(dist(gen));
-    return static_cast<int>(prev_vel_1);
+    // Do not add artificial integer noise, as this directly controls the physical Gazebo joints 
+    // and causes severe robotic shaking. Return the smooth dynamics velocity.
+    prev_vel_1 = curr_vel;
+    return prev_vel_1;
   }
 
 private:
