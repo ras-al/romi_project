@@ -1,0 +1,50 @@
+slam_toolbox:
+  ros__parameters:
+ 
+    # ── Clock & frames ────────────────────────────────────────────
+    use_sim_time: true
+    odom_frame: odom
+    map_frame: map
+    base_frame: base_link
+    scan_topic: /lidar/scan
+ 
+    # ── Mode ──────────────────────────────────────────────────────
+    mode: mapping
+ 
+    # ── Map resolution & size ─────────────────────────────────────
+    # 0.05 m/cell is standard. Don't go lower without a faster CPU.
+    resolution: 0.05
+    max_laser_range: 8.0          # stay inside the depot; was 10.0
+ 
+    # ── Scan matching (key fixes for your split-map problem) ──────
+    # How far the robot must move before a new node is inserted
+    minimum_travel_distance: 0.3  # was 0.1 — too aggressive, caused duplicate nodes
+    minimum_travel_heading: 0.3   # radians (~17°)
+ 
+    # Scan matching algorithm: correlative is better for noisy scans
+    # than the default 'Gauss-Newton'
+    scan_buffer_size: 10
+    scan_buffer_maximum_scan_distance: 10.0
+    link_match_minimum_response_fine: 0.45
+    link_scan_maximum_distance: 1.5
+ 
+    # Loop closure — tighten to fix the split/ghost sections
+    loop_search_maximum_distance: 3.0
+    do_loop_closing: true
+    loop_match_minimum_chain_size: 10
+    loop_match_maximum_variance_coarse: 3.0
+    loop_match_minimum_response_coarse: 0.35
+    loop_match_minimum_response_fine: 0.45
+ 
+    # ── Map update / TF publish rate ──────────────────────────────
+    map_update_interval: 1.0      # was 2.0 — update faster for live RViz
+    transform_publish_period: 0.02
+ 
+    # ── Stack / memory ────────────────────────────────────────────
+    stack_size_to_use: 40000000
+ 
+    # ── Throttle noise from Gazebo ────────────────────────────────
+    # The RealSense in Gazebo publishes very noisy point clouds.
+    # Increasing min_range filters out close-range noise rings.
+    # (LiDAR min is already 0.12 in SDF — this is a safety margin)
+    minimum_time_interval: 0.1

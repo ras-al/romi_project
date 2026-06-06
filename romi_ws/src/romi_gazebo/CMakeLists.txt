@@ -56,6 +56,7 @@ install(DIRECTORY
   launch
   models
   meshes
+  config
   DESTINATION share/${PROJECT_NAME}
 )
 

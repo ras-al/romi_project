@@ -240,7 +240,7 @@ void RomiEncoderPlugin::OnCmdVel(const msgs::Twist &_msg) {
   double v_right = linear_x + (angular_z * wheel_base_ / 2.0);
   
   // Convert wheel velocities (m/s) to angular velocities (rad/s)
-  // Invert because negative rotation around local Z (+Y) means forward motion
+  // Invert because negative rotation around local Z points to forward motion (+X)
   double left_angular_vel = -v_left / wheel_radius_;
   double right_angular_vel = -v_right / wheel_radius_;
   
