@@ -66,6 +66,7 @@ install(PROGRAMS
   scripts/hold_teleop.py
   scripts/data_recorder.py
   scripts/autonomous_explorer.py
+  scripts/scan_frame_remapper.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
