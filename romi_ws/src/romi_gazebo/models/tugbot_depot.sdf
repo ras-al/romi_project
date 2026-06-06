@@ -18,13 +18,6 @@
     <plugin name='ignition::gazebo::systems::Sensors' filename='ignition-gazebo-sensors-system'>
       <render_engine>ogre2</render_engine>
     </plugin>
-    <plugin name='ignition::gazebo::systems::PosePublisher'
-            filename='ignition-gazebo-pose-publisher-system'>
-      <publish_link_pose>false</publish_link_pose>
-      <publish_model_pose>true</publish_model_pose>
-      <publish_nested_model_pose>false</publish_nested_model_pose>
-      <update_frequency>50</update_frequency>
-    </plugin>
     <scene>
       <ambient>1 1 1 1</ambient>
       <background>0.3 0.7 0.9 1</background>
@@ -420,7 +413,7 @@
     <!-- Romi Robot Model -->
     <model name="romi">
       <pose>1 1 0.035 0 0 0</pose>
-      
+      <self_collide>false</self_collide>
       <!-- BASE LINK (CHASSIS) -->
       <link name="base_link">
         <pose>0 0 0 0 0 0</pose>
@@ -449,11 +442,11 @@
             <diffuse>0.2 0.2 0.8 1.0</diffuse>
           </material>
         </visual>
-        <collision name="collision_base_link">
+        <collision name="collision_chassis">
           <pose>0 0 0.02 0 0 0</pose>
           <geometry>
             <box>
-              <size>0.16 0.14 0.04</size>
+              <size>0.16 0.12 0.04</size>
             </box>
           </geometry>
         </collision>
@@ -461,7 +454,7 @@
 
       <!-- LEFT WHEEL -->
       <link name="left_wheel">
-        <pose>0 -0.07 0.035 1.5708 0 0</pose>
+        <pose>0 0.07 0.035 1.5708 0 0</pose>
         <inertial>
           <mass>0.05</mass>
           <inertia>
@@ -532,7 +525,7 @@
 
       <!-- RIGHT WHEEL -->
       <link name="right_wheel">
-        <pose>0 0.07 0.035 1.5708 0 0</pose>
+        <pose>0 -0.07 0.035 1.5708 0 0</pose>
         <inertial>
           <mass>0.05</mass>
           <inertia>
@@ -841,6 +834,15 @@
         <pid_kd>0.0</pid_kd>
         <cmd_vel_topic>/model/romi/cmd_vel</cmd_vel_topic>
         <odometry_topic>/model/romi/odometry</odometry_topic>
+      </plugin>
+
+      <!-- Ground Truth Pose Publisher -->
+      <plugin name='ignition::gazebo::systems::PosePublisher'
+              filename='ignition-gazebo-pose-publisher-system'>
+        <publish_link_pose>false</publish_link_pose>
+        <publish_model_pose>true</publish_model_pose>
+        <publish_nested_model_pose>false</publish_nested_model_pose>
+        <update_frequency>50</update_frequency>
       </plugin>
 
     </model>

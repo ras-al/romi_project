@@ -22,6 +22,7 @@
   <depend>std_srvs</depend>
   <depend>rviz2</depend>
   <depend>joint_state_publisher</depend>
+  <depend>slam_toolbox</depend>
 
   <build_depend>ignition-gazebo6</build_depend>
   <build_depend>ignition-transport11</build_depend>

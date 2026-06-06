@@ -64,12 +64,14 @@ class DataRecorder(Node):
         self.declare_parameter('odom_topic', '/model/romi/odometry')
         self.declare_parameter('pose_topic', '/world/world_demo/dynamic_pose/info')
         self.declare_parameter('cloud_every_n', 5)
+        self.declare_parameter('auto_start', False)
 
         self.cloud_topic = self.get_parameter('cloud_topic').value
         self.imu_topic = self.get_parameter('imu_topic').value
         self.odom_topic = self.get_parameter('odom_topic').value
         self.pose_topic = self.get_parameter('pose_topic').value
         self.cloud_every_n = max(1, int(self.get_parameter('cloud_every_n').value))
+        auto_start = self.get_parameter('auto_start').value
 
         # TF2
         self.tf_buffer = Buffer()
@@ -91,9 +93,14 @@ class DataRecorder(Node):
         self.create_subscription(Odometry, self.odom_topic, self.odom_cb, 10)
         self.create_subscription(PoseArray, self.pose_topic, self.pose_cb, 10)
 
-        self.get_logger().info('Data recorder ready. Waiting for recording trigger...')
-        self.get_logger().info('  Start: ros2 service call /toggle_recording std_srvs/srv/SetBool "{data: true}"')
-        self.get_logger().info('  Stop:  ros2 service call /toggle_recording std_srvs/srv/SetBool "{data: false}"')
+        if auto_start:
+            self._start_recording()
+            self.get_logger().info(f'Data recorder auto-started → {self.output_dir}')
+        else:
+            self.get_logger().info('Data recorder ready. Waiting for recording trigger...')
+            self.get_logger().info('  Start: ros2 service call /toggle_recording std_srvs/srv/SetBool "{data: true}"')
+            self.get_logger().info('  Stop:  ros2 service call /toggle_recording std_srvs/srv/SetBool "{data: false}"')
+
 
     def toggle_recording_cb(self, request, response):
         if request.data and not self.recording:

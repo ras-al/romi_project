@@ -240,8 +240,9 @@ void RomiEncoderPlugin::OnCmdVel(const msgs::Twist &_msg) {
   double v_right = linear_x + (angular_z * wheel_base_ / 2.0);
   
   // Convert wheel velocities (m/s) to angular velocities (rad/s)
-  double left_angular_vel = v_left / wheel_radius_;
-  double right_angular_vel = v_right / wheel_radius_;
+  // Invert because negative rotation around local Z (+Y) means forward motion
+  double left_angular_vel = -v_left / wheel_radius_;
+  double right_angular_vel = -v_right / wheel_radius_;
   
   // Convert angular velocities to encoder ticks per sample
   int left_target_ticks = AngularVelocityToEncoderTicksInt(left_angular_vel, control_dt_);
@@ -374,37 +375,31 @@ int RomiEncoderPlugin::DistanceToEncoderTicks(double distance_m) const {
 }
 
 void RomiEncoderPlugin::UpdateOdometry(int left_ticks, int right_ticks, double dt) {
-  // Skip first update (need previous values)
-  if (prev_time_ < 0.0) {
-    prev_left_ticks_ = left_ticks;
-    prev_right_ticks_ = right_ticks;
-    return;
-  }
-  
-  // Calculate change in encoder ticks (delta)
-  int delta_left = left_ticks - prev_left_ticks_;
-  int delta_right = right_ticks - prev_right_ticks_;
-  
-  // Convert encoder ticks to distances
-  double left_distance = EncoderTicksToDistance(delta_left);
-  double right_distance = EncoderTicksToDistance(delta_right);
+  // Invert ticks because negative physical rotation means forward motion
+  left_ticks = -left_ticks;
+  right_ticks = -right_ticks;
+
+  // left_ticks and right_ticks are the PID controller's output for this
+  // sample period — they represent instantaneous velocity in encoder ticks
+  // per sample, NOT cumulative ticks.  Use them directly as the distance
+  // traveled this sample.
+
+  // Convert encoder ticks (per sample) to distances
+  double left_distance = EncoderTicksToDistance(left_ticks);
+  double right_distance = EncoderTicksToDistance(right_ticks);
   
   // Differential drive forward kinematics
-  double v = (left_distance + right_distance) / (2.0 * dt);  // Linear velocity
-  double omega = (right_distance - left_distance) / (wheel_base_ * dt);  // Angular velocity
+  double distance = (left_distance + right_distance) / 2.0;
+  double delta_yaw = (right_distance - left_distance) / wheel_base_;
   
-  // Update pose
-  x_ += v * std::cos(yaw_) * dt;
-  y_ += v * std::sin(yaw_) * dt;
-  yaw_ += omega * dt;
+  // Update pose using midpoint integration
+  x_ += distance * std::cos(yaw_ + delta_yaw / 2.0);
+  y_ += distance * std::sin(yaw_ + delta_yaw / 2.0);
+  yaw_ += delta_yaw;
   
   // Normalize yaw to [-pi, pi]
   while (yaw_ > M_PI) yaw_ -= 2.0 * M_PI;
   while (yaw_ < -M_PI) yaw_ += 2.0 * M_PI;
-  
-  // Store current ticks for next iteration
-  prev_left_ticks_ = left_ticks;
-  prev_right_ticks_ = right_ticks;
 }
 
 void RomiEncoderPlugin::PublishOdometry(const UpdateInfo &_info) {
@@ -436,8 +431,9 @@ void RomiEncoderPlugin::PublishOdometry(const UpdateInfo &_info) {
   msgs::Twist *twist = odom_msg.mutable_twist();
   
   // Calculate velocities from current joint velocities (more accurate)
-  double left_angular_vel = left_joint_velocity_;
-  double right_angular_vel = right_joint_velocity_;
+  // Invert because negative rotation means forward motion
+  double left_angular_vel = -left_joint_velocity_;
+  double right_angular_vel = -right_joint_velocity_;
   double left_linear_vel = left_angular_vel * wheel_radius_;
   double right_linear_vel = right_angular_vel * wheel_radius_;
   double v = (left_linear_vel + right_linear_vel) / 2.0;

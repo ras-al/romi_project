@@ -23,7 +23,12 @@ class OdomToTfBroadcaster(Node):
 
     def odom_callback(self, msg: Odometry) -> None:
         transform = TransformStamped()
-        transform.header.stamp = msg.header.stamp
+        # Use the node's clock (sim time when use_sim_time=true) to stay
+        # in sync with robot_state_publisher and other TF publishers.
+        # Using msg.header.stamp causes TF_OLD_DATA because the Gazebo
+        # bridge delivers odom messages with timestamps that lag behind
+        # the /clock topic.
+        transform.header.stamp = self.get_clock().now().to_msg()
         transform.header.frame_id = msg.header.frame_id or self.parent_frame_id
         transform.child_frame_id = msg.child_frame_id or self.child_frame_id
 
@@ -41,9 +46,14 @@ def main() -> None:
     node = OdomToTfBroadcaster()
     try:
         rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        try:
+            rclpy.shutdown()
+        except Exception:
+            pass
 
 
 if __name__ == '__main__':

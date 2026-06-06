@@ -64,6 +64,7 @@ install(PROGRAMS
   scripts/odom_to_tf.py
   scripts/hold_teleop.py
   scripts/data_recorder.py
+  scripts/autonomous_explorer.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
