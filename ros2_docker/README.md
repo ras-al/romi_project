@@ -249,7 +249,7 @@ The container runs as a non-root user matching your host user:
 
 ## Installed Packages
 
-### ROS2 Packages
+### ROS 2 Packages
 - `ros-humble-desktop-full` (base image)
 - `ros-humble-ros-gz`
 - `ros-humble-ros-gz-bridge`
@@ -263,6 +263,34 @@ The container runs as a non-root user matching your host user:
 - `ros-humble-rviz2`
 - `ros-humble-xacro`
 - `ros-humble-urdf`
+- `ros-humble-slam-toolbox` (for mapping)
+- `ros-humble-nav2-map-server` (for map saving)
+
+### Running the Autonomous Pipeline
+
+The container is fully equipped to run the end-to-end Romi mapping and data collection pipeline.
+
+1. **Start the container and build the workspace**:
+   ```bash
+   docker compose exec ros2_gazebo bash
+   cd /ros2_ws/Documents/robotics/romi_project/romi_ws
+   colcon build
+   source install/setup.bash
+   ```
+
+2. **Launch the exploration & SLAM node**:
+   ```bash
+   # Launch with default coverage goal (600 cells)
+   ros2 launch romi_gazebo romi_control.launch.py
+   
+   # Or specify a custom coverage goal
+   ros2 launch romi_gazebo romi_control.launch.py coverage_stop_cells:=800
+   ```
+
+The robot will autonomously map the depot, actively avoiding walls and scoring LiDAR clearance using a coverage grid. 
+When the target coverage is hit, the robot will safely auto-stop, save the map (`.pgm` and `.yaml`) via the `nav2_map_server`, and stop the 3D data recorder.
+
+All datasets (`.ply` point clouds, `.jpg` RGB frames, `camera_info.json`, `images.txt` COLMAP poses, and CSV telemetry) will be safely written to `data/romi_capture_YYYYMMDD_HHMMSS/` in the workspace root.
 
 ### Gazebo
 - `gz-fortress` (Gazebo Fortress/Ignition Gazebo 6)

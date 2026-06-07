@@ -35,7 +35,7 @@ class OdomToTfBroadcaster(Node):
         self.declare_parameter('parent_frame_id', 'odom')
         self.declare_parameter('child_frame_id',  'base_link')
         # Small lookahead to avoid TF_EXTRAPOLATION_INTO_FUTURE during clock settle
-        self.declare_parameter('stamp_lookahead_ms', 5)
+        self.declare_parameter('stamp_lookahead_ms', 1)
  
         odom_topic           = self.get_parameter('odom_topic').value
         self.parent_frame_id = self.get_parameter('parent_frame_id').value

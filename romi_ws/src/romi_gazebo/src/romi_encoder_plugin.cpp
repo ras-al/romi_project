@@ -26,7 +26,9 @@ namespace romi {
 namespace gazebo {
 
 RomiEncoderPlugin::RomiEncoderPlugin()
-    : wheel_radius_(0.035),
+    : cmd_vel_topic_("/model/romi/cmd_vel"),
+      odometry_topic_("/model/romi/odometry"),
+      wheel_radius_(0.035),
       wheel_base_(0.14),
       encoder_ticks_per_rotation_(1440),
       control_dt_(0.025),
@@ -46,9 +48,7 @@ RomiEncoderPlugin::RomiEncoderPlugin()
       last_right_target_angular_vel_(0.0),
       ideal_left_angular_vel_(0.0),
       ideal_right_angular_vel_(0.0),
-      first_encoder_update_(true),
-      cmd_vel_topic_("/model/romi/cmd_vel"),
-      odometry_topic_("/model/romi/odometry") {
+      first_encoder_update_(true) {
   std::cout << "[RomiEncoderPlugin] Constructor: Plugin created" << std::endl;
 }
 
@@ -58,7 +58,7 @@ void RomiEncoderPlugin::Configure(
     const Entity &_entity,
     const std::shared_ptr<const sdf::Element> &_sdf,
     EntityComponentManager &_ecm,
-    EventManager &_eventMgr) {
+    EventManager &/*_eventMgr*/) {
   
   model_entity_ = _entity;
   
@@ -184,9 +184,13 @@ void RomiEncoderPlugin::PreUpdate(
     last_left_target_angular_vel_ = left_target_angular_vel;
     last_right_target_angular_vel_ = right_target_angular_vel;
     
-    // Update odometry using the bounded, smoothed PID commands rather than raw physics joints.
-    // This prevents massive odometry spikes (red line shooting to infinity) if Gazebo glitches during a collision.
-    UpdateOdometryFloating(left_target_angular_vel, right_target_angular_vel, encoder_dt);
+    // Compute odometry from actual joint velocities (not targets) to
+    // prevent phase lead where RViz shows rotation before Gazebo executes it.
+    // Clamp to reject transient physics spikes during collisions.
+    double max_ang_vel = 12.0;  // rad/s — well above any reachable wheel speed
+    double odom_left  = std::max(-max_ang_vel, std::min(max_ang_vel, left_joint_velocity_));
+    double odom_right = std::max(-max_ang_vel, std::min(max_ang_vel, right_joint_velocity_));
+    UpdateOdometryFloating(odom_left, odom_right, encoder_dt);
     
     prev_time_ = current_time;
   }
@@ -205,8 +209,8 @@ void RomiEncoderPlugin::PreUpdate(
 }
 
 void RomiEncoderPlugin::Update(
-    const UpdateInfo &_info,
-    EntityComponentManager &_ecm) {
+    const UpdateInfo &/*_info*/,
+    EntityComponentManager &/*_ecm*/) {
   
   // Update phase is now empty - all work moved to PreUpdate
   // This ensures velocity commands are set before physics step
@@ -216,7 +220,18 @@ void RomiEncoderPlugin::PostUpdate(
     const UpdateInfo &_info,
     const EntityComponentManager &_ecm) {
   
-  // Publish odometry
+  // Read ground-truth model pose from Gazebo physics.
+  // This keeps the published odometry perfectly synchronized with the
+  // simulation, preventing drift caused by collisions or wheel slip
+  // that encoder integration cannot observe.
+  auto pose_comp = _ecm.Component<components::Pose>(model_entity_);
+  if (pose_comp) {
+    const auto &pose = pose_comp->Data();
+    x_   = pose.Pos().X();
+    y_   = pose.Pos().Y();
+    yaw_ = pose.Rot().Yaw();
+  }
+  
   PublishOdometry(_info);
 }
 
@@ -297,7 +312,7 @@ void RomiEncoderPlugin::FindJoints(EntityComponentManager &_ecm) {
   // Find joints by name - search all joints and match by name
   _ecm.Each<components::Joint, components::Name>(
       [&](const Entity &_jointEntity,
-          components::Joint *_joint,
+          components::Joint * /*_joint*/,
           components::Name *_name) -> bool {
         std::string joint_name = _name->Data();
         
