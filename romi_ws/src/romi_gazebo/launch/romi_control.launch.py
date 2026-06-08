@@ -155,14 +155,13 @@ def generate_launch_description():
     explorer = Node(
         package='romi_gazebo', executable='autonomous_explorer.py',
         parameters=[sim, {
-            'linear_speed':         0.22,
-            'angular_speed':        1.2,
-            'obstacle_threshold':   0.55,   # start turning at 55 cm
-            'emergency_threshold':  0.25,   # emergency reverse at 25 cm
-            'side_threshold':       0.40,
+            'linear_speed':         0.18,   # slower = more time to react
+            'angular_speed':        1.5,
+            'obstacle_threshold':   0.50,   # start steering away
+            'emergency_threshold':  0.20,   # reverse (0.20 = robot edge + 0.12m)
+            'side_threshold':       0.35,   # side steering zone
             'coverage_stop_cells':  LaunchConfiguration('coverage_stop_cells'),
             'exploration_timeout':  LaunchConfiguration('exploration_timeout'),
-            'stuck_ticks':          20,     # 1 second (20 ticks × 0.05s)
             'progress_watchdog_s':  60.0,
             'odom_topic': '/odometry/filtered',
         }],
