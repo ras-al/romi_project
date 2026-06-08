@@ -178,10 +178,20 @@ class DataRecorder(Node):
         """Create the session folder and open all files exactly ONCE."""
         p = self.get_parameter('output_dir').value
         if p:
-            self.output_dir = Path(p)
+            base = Path(p)
         else:
+            # Use absolute path based on workspace location
+            ws = Path(__file__).resolve().parent.parent.parent.parent
             ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-            self.output_dir = Path('data') / f'romi_capture_{ts}'
+            base = ws / 'data' / f'romi_capture_{ts}'
+
+        # Never overwrite an existing session — append suffix if needed
+        candidate = base
+        suffix = 1
+        while candidate.exists():
+            candidate = Path(f'{base}_{suffix}')
+            suffix += 1
+        self.output_dir = candidate
 
         (self.output_dir / 'pointclouds').mkdir(parents=True, exist_ok=True)
         (self.output_dir / 'images' / 'rgb').mkdir(parents=True, exist_ok=True)

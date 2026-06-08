@@ -1,6 +1,6 @@
 # Romi Autonomous Exploration & Mapping
 
-This workspace contains the complete ROS 2 (Humble) + Gazebo Ignition (Fortress) simulation environment for the Romi differential drive robot. It features a fully autonomous exploration algorithm, a robust 2D SLAM pipeline, and a comprehensive 3D dataset recording system.
+This workspace contains the complete ROS 2 (Humble) + Gazebo Ignition (Fortress) simulation environment for the Romi differential drive robot. It features a fully autonomous exploration algorithm based on reactive potential-field steering, a robust 2D SLAM pipeline, and a comprehensive 3D dataset recording system.
 
 ## Architecture Overview
 
@@ -11,44 +11,47 @@ This workspace contains the complete ROS 2 (Humble) + Gazebo Ignition (Fortress)
      - 2D LiDAR (360° scan)
      - RealSense Depth & RGB Camera
      - IMU
-3. **Bridge Node**: `ros_gz_bridge` is used to pass messages (Odometry, LiDAR, Camera, TF) between the Ignition transport layer and ROS 2 topics.
-4. **Mapping**: `slam_toolbox` (async) consumes the filtered LiDAR scans to generate a high-fidelity 2D occupancy grid of the environment.
+3. **State Estimation**: An Extended Kalman Filter (`robot_localization`) fuses wheel odometry and IMU angular velocities to produce highly stable continuous transforms (`/odometry/filtered`).
+4. **Bridge Node**: `ros_gz_bridge` is used to pass messages (Odometry, LiDAR, Camera, TF) between the Ignition transport layer and ROS 2 topics.
+5. **Mapping**: `slam_toolbox` (async) consumes the filtered LiDAR scans and EKF odometry to generate a high-fidelity 2D occupancy grid of the environment.
 
-## Autonomous Exploration State Machine
-`autonomous_explorer.py` is the brain of the operation, executing a reactive, coverage-aware state machine.
+## Autonomous Exploration Architecture
 
-### The Coverage Grid
-Rather than wandering randomly, the robot maintains a lightweight `CoverageGrid` that divides the world into `0.5m` cells. As the robot moves, it marks its current cell as "visited". 
-When an obstacle blocks the path, the robot evaluates four candidate turn directions (hard left, soft left, soft right, hard right). For each direction, it casts a 3.0m lookahead cone and counts how many *unvisited* cells lie in that path. The robot always turns toward the direction with the highest coverage score, ensuring it explores new territory instead of revisiting old areas.
+The robot's navigation is governed by `autonomous_explorer.py`. Previous iterations relied on a fragile multi-state sequence. The current architecture employs a continuous, physics-aware **Reactive Potential-Field Steering** system to gracefully maneuver through complex environments.
 
-### The States
-- `EXPLORING`: The robot moves forward, applying a subtle wall-following hysteresis (drifting slightly away if walls get too close) and random noise to avoid infinite straight lines.
-- `TURNING`: The robot pivots in place toward the highest-scoring unexplored direction until the path ahead is fully clear.
-- `REVERSING`: Triggered by the **Emergency Collision Guard**. If *any* part of the robot's front bumper (front, front-left, or front-right) comes within `0.22m` of an obstacle, the robot immediately hits the brakes and reverses for 1.0s before turning.
-- `RECOVERING`: A fallback "Stuck Guard". If the odometry detects that the robot hasn't moved at least `0.06m` over the last 60 control ticks, it assumes the robot is physically snagged and executes a 2.0s forced spin to break free.
-- `DONE`: Reached when the `coverage_stop_cells` threshold is met (e.g., 600 cells). The robot stops, triggers the map saver, flushes all recordings, and shuts down safely.
+### Physics-Aware Navigation
+Navigation thresholds are strictly derived from the robot's physical dimensions (extracted from `tugbot_depot.sdf`):
+- **Chassis Dimensions**: 0.16m × 0.12m × 0.04m
+- **Body Extent**: 0.08m from the LiDAR center to the lateral edge.
+- **Minimum Safe Passage**: Computed as body width plus a dynamic clearance margin (`MIN_SIDE_DIST = 0.20m`). 
 
-But these are not working as expected. It always gets stock or goes in circles.
+A dedicated **Gap-Width Check** ensures the robot proactively refuses to enter passages narrower than its physical dimensions, resolving the issue of lateral collisions against vertical supports.
+
+### Reactive Control Loop
+The main control loop evaluates 7 discrete radial sectors from the 2D LiDAR to generate continuous steering vectors:
+- **Repulsive Steering**: Obstacles within the influence radius exert a repulsive force inversely proportional to distance ($\propto \frac{1}{d^2}$). Lateral obstacles push the robot toward the center of passages, enabling smooth, continuous curvature around corners rather than abrupt stop-and-spin maneuvers.
+- **Dynamic Velocity Profiling**: Linear velocity scales proportionally with forward clearance. Wide-open spaces allow maximum velocity, while confined spaces induce a controlled crawl.
+
+### State Machine
+The state machine has been streamlined to just two primary states:
+1. `DRIVING`: The default state. The robot continuously computes potential-field steering and velocity. If the forward path is obstructed, it evaluates the surrounding grid to prioritize turning toward unexplored areas using the `CoverageGrid` logic.
+2. `REVERSING`: Triggered strictly as a safety override. If an obstacle breaches the `emergency_threshold` (0.20m) or if the scan-based stuck timer detects proximity for > 0.5s, the robot executes an immediate reverse trajectory. If reversing fails to clear the obstruction, it recursively flips direction to disentangle itself from complex geometric traps.
+
+### Coverage Grid
+To ensure exhaustive exploration, the robot tracks visited regions using a discrete `CoverageGrid`. When forced to decide between multiple clear paths, it scores directions by casting a lookahead vector and counting unexplored cells, naturally guiding the robot into uncharted territory.
 
 ## Data Collection Pipeline
-For 3D reconstruction teams (NeRF, Gaussian Splatting, COLMAP), `data_recorder.py` runs passively in the background, triggered on launch.
+
+For 3D reconstruction pipelines (NeRF, Gaussian Splatting, COLMAP), `data_recorder.py` runs synchronously in the background. To optimize data quality and storage, recording automatically pauses during `REVERSING` or tight maneuvers, capturing only progressive exploration data.
 
 When the exploration finishes, the `data/romi_capture_YYYYMMDD_HHMMSS/` directory contains:
 - `pointclouds/`: Binary little-endian PLY files (`cloud_XXXXXX.ply`) containing XYZ points and RGB color data. Binary PLYs are 5x smaller and 10x faster to write than ASCII.
 - `images/`: Raw JPEG frames (`frame_XXXXXX.jpg`) synced exactly with the point clouds. Essential for texture generation in COLMAP.
 - `camera_info.json`: The RealSense camera intrinsics (`fx`, `fy`, `cx`, `cy`, width, height).
 - `images.txt`: Extrinsic camera poses written directly in COLMAP text format (`QW QX QY QZ TX TY TZ 1 filename`). This saves pipeline engineers from writing custom conversion scripts.
-- `odometry.csv` & `ground_truth.csv`: Raw trajectory data for evaluation.
+- `odometry.csv`, `odometry_raw.csv`, `imu.csv` & `ground_truth.csv`: High-frequency synchronized trajectory and sensor data.
 
-## Historical Technical Challenges & Solutions
+## Deployment Notes
 
-Developing a stable autonomous differential drive robot in Gazebo presented several major physics and timing challenges.
-
-### 1. Odometry Drift & "Infinity Shooting"
-**Problem**: The odometry map (red path in RViz) would occasionally shoot off to infinity in a perfectly straight line, completely destroying the map.
-
-### 2. The Collision Recovery Loop ("Rounding Corners")
-**Problem**: When the robot hit an obstacle, it would reverse, but then spend entirely too long spinning in place, often getting stuck "rounding" the corner for 5+ seconds.
-
-### 3. The "Rubber Eraser" Effect
-**Problem**: The robot was moving erratically and stuttering across the floor, making autonomous navigation impossible.
+1. **EKF Covariance Tuning**: Ensure all covariances in `ekf_params.yaml` use explicit floating-point representation (`0.0`) to satisfy strict ROS 2 type-checking.
+2. **Session Recording**: The data recorder manages a single persistent session per launch. Pausing and resuming operations append to the existing trajectory, maintaining continuous frame indices.

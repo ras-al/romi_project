@@ -1,18 +1,4 @@
 #!/usr/bin/env python3
-"""
-romi_control.launch.py  — with EKF sensor fusion (safe mode)
-─────────────────────────────────────────────────────────────
-Architecture:
-  • odom_to_tf.py KEPT for TF: odom→base_link (proven reliable)
-  • EKF publishes /odometry/filtered ONLY (publish_tf: false)
-  • SLAM uses TF from odom_to_tf.py (works), but downstream
-    recorder/explorer can optionally read /odometry/filtered
-
-DATA FLOW:
-  Gazebo → /model/romi/odometry → odom_to_tf.py → TF: odom→base_link → SLAM
-  Gazebo → /model/romi/odometry ──┐
-  Gazebo → /imu                  ──┤→ EKF → /odometry/filtered (smooth pose for recorder)
-"""
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
