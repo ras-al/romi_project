@@ -1,22 +1,22 @@
 slam_toolbox:
   ros__parameters:
- 
+
     # ── Clock & frames ─────────────────────────────────────────────
     use_sim_time: true
     odom_frame:  odom
     map_frame:   map
     base_frame:  base_link
- 
+
     # Point at the remapped topic whose frame_id is correct
     scan_topic: /lidar/scan_fixed
- 
+
     # ── Mode ───────────────────────────────────────────────────────
     mode: mapping
- 
+
     # ── Resolution & range ─────────────────────────────────────────
     resolution: 0.05
     max_laser_range: 8.0
- 
+
     # ── Node insertion thresholds ──────────────────────────────────
     # Too low = too many nodes = bad loop closure.  0.3 m / ~17° is
     # conservative enough for a 0.18 m/s robot.
@@ -28,21 +28,21 @@ slam_toolbox:
     scan_buffer_maximum_scan_distance: 8.0
 
     # Increase these to allow the algorithm to fix minor odometry errors
-    correlation_search_space_dimension: 0.5 
+    correlation_search_space_dimension: 0.5
     correlation_search_space_resolution: 0.05
-    correlation_search_space_smear_deviation: 0.1 
+    correlation_search_space_smear_deviation: 0.1
 
     # Response threshold: how confident the correlative matcher must
     # be before accepting a pose.  0.45 is a good middle ground for
     # a warehouse with lots of open space (low texture → lower scores).
     link_match_minimum_response_fine: 0.45
     link_scan_maximum_distance: 1.5
- 
+
     # Use the correlative scan matcher for coarse → fine matching.
     # Better than Gauss-Newton on sparse/noisy Gazebo scans.
     use_scan_matching: true
     use_scan_barycenter: true
- 
+
     # ── Loop closure ───────────────────────────────────────────────
     do_loop_closing: true
     loop_search_maximum_distance: 4.0
@@ -50,20 +50,20 @@ slam_toolbox:
     loop_match_maximum_variance_coarse: 3.0
     loop_match_minimum_response_coarse: 0.35
     loop_match_minimum_response_fine: 0.45
- 
+
     # ── Map update rate ────────────────────────────────────────────
     # 0.5 s refresh catches fast robot movement without CPU overload
     map_update_interval: 0.5
     transform_publish_period: 0.02
- 
+
     # ── Memory ─────────────────────────────────────────────────────
     stack_size_to_use: 40000000
- 
+
     # ── Scan throttle ──────────────────────────────────────────────
     # Accept at most one scan every 100 ms (matches LiDAR 10 Hz).
     # Prevents duplicate scans from the bridge flooding the matcher.
     minimum_time_interval: 0.1
- 
+
     # ── Serialisation ──────────────────────────────────────────────
     # Uncomment to auto-save the map when you close the node:
     # map_file_name: /tmp/romi_map

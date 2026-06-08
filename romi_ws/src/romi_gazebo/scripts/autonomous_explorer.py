@@ -4,6 +4,12 @@ Autonomous reactive explorer for the Romi robot.
 
 Implements coverage-based frontier exploration with aggressive
 scan-driven obstacle avoidance and collision recovery.
+
+Key design principles:
+  • Detect walls EARLY (0.70 m) — start turning well before contact
+  • React to collision IMMEDIATELY — reverse the instant anything is < 0.35 m
+  • Recovery is always: reverse → spin → go — never just spin in place
+  • Stuck detection triggers fast (1 second) for thin poles the LiDAR misses
 """
 
 import math
@@ -55,7 +61,7 @@ class St:
     EXPLORING  = 'EXPLORING'
     AVOIDING   = 'AVOIDING'     # In-place rotation away from obstacle
     REVERSING  = 'REVERSING'    # Emergency collision reverse
-    RECOVERING = 'RECOVERING'   # Recovery from stuck state
+    RECOVERING = 'RECOVERING'   # Recovery from stuck state (reverse+spin)
     DONE       = 'DONE'
 
 
@@ -68,14 +74,14 @@ class ReactiveExplorer(Node):
         self.declare_parameter('cmd_vel_topic',       '/model/romi/cmd_vel')
         self.declare_parameter('scan_topic',          '/lidar/scan')
         self.declare_parameter('odom_topic',          '/model/romi/odometry')
-        self.declare_parameter('linear_speed',         0.20)
-        self.declare_parameter('angular_speed',        1.0)
-        self.declare_parameter('obstacle_threshold',   0.60)
-        self.declare_parameter('emergency_threshold',  0.30)
-        self.declare_parameter('side_threshold',       0.35)
+        self.declare_parameter('linear_speed',         0.22)
+        self.declare_parameter('angular_speed',        1.2)
+        self.declare_parameter('obstacle_threshold',   0.70)
+        self.declare_parameter('emergency_threshold',  0.35)
+        self.declare_parameter('side_threshold',       0.40)
         self.declare_parameter('coverage_stop_cells',  600)
         self.declare_parameter('exploration_timeout',  0.0)
-        self.declare_parameter('stuck_ticks',          30)
+        self.declare_parameter('stuck_ticks',          20)
         self.declare_parameter('stuck_move_threshold', 0.03)
         self.declare_parameter('coverage_cell_size',   0.5)
         self.declare_parameter('progress_watchdog_s',  60.0)
@@ -101,21 +107,29 @@ class ReactiveExplorer(Node):
             Odometry, self.get_parameter('odom_topic').value, self.odom_cb, 10)
 
         # State
-        self.state       = St.WAITING
-        self.latest_scan = None
-        self.rec_on      = False
-        self.DT          = 0.05
-        self.turn_dir    = 1.0
-        self._wall_hz    = 0.0
+        self.state        = St.WAITING
+        self.latest_scan  = None
+        self.rec_on       = False
+        self.DT           = 0.05
+        self.turn_dir     = 1.0
+        self._wall_hz     = 0.0
         self._avoid_timer = 0.0
         self._rev_timer   = 0.0
+        self._rec_phase   = 0
+        self._rec_timer   = 0.0
 
         # Pose
         self.rx = self.ry = self.ryaw = 0.0
 
-        # Stuck detection
-        self._last_x    = self._last_y = None
-        self._stk_ticks = 0
+        # ── Scan-based stuck detection ────────────────────────────────
+        # Position-based detection is UNRELIABLE because the encoder
+        # plugin integrates wheel commands (not physics), so odometry
+        # keeps advancing even when the robot is physically jammed.
+        #
+        # Instead: if any scan zone stays < emg_thr for > stuck_s
+        # seconds while in a moving state, we declare stuck.
+        self._wall_timer  = 0.0   # seconds any zone has been < emg_thr
+        self._stuck_s     = 1.0   # trigger after 1 s of continuous proximity
 
         # Coverage
         self.grid = CoverageGrid(self.get_parameter('coverage_cell_size').value)
@@ -146,23 +160,25 @@ class ReactiveExplorer(Node):
              if math.isfinite(r) and scan.range_min < r < scan.range_max]
         return min(v) if v else float('inf')
 
-    def _pick_clear_direction(self, scan) -> float:
-        """Choose turn direction toward the clearest, most unexplored space.
+    def _best_open_direction(self, scan) -> float:
+        """Find the direction with the MOST open space.
 
-        Returns +1.0 (CCW / left) or -1.0 (CW / right).
+        Scans 12 candidate headings (±30° to ±180°) and picks the one
+        with the best combination of clearance + unexplored cells.
+        Returns +1.0 (left/CCW) or -1.0 (right/CW).
         """
-        # Check 10 candidate headings from 30° to 150° on both sides
         candidates = []
-        for deg in [30, 60, 90, 120, 150]:
+        for deg in [30, 60, 90, 120, 150, 180]:
             for sign, direction in [(1, 1.0), (-1, -1.0)]:
-                offset_rad = sign * math.radians(deg)
                 centre = sign * deg
-                clearance = self.zone(scan, centre - 20, centre + 20)
-                if clearance < 0.35:
+                clearance = self.zone(scan, centre - 25, centre + 25)
+                if clearance < 0.40:
                     continue
+                offset_rad = sign * math.radians(deg)
                 cov = self.grid.score_direction(
                     self.rx, self.ry, self.ryaw, offset_rad)
-                score = cov + clearance * 15.0
+                # Weight clearance heavily so the robot picks truly open space
+                score = cov + clearance * 20.0
                 candidates.append((score, direction))
 
         if candidates:
@@ -222,16 +238,6 @@ class ReactiveExplorer(Node):
         self.ryaw = math.atan2(siny, cosy)
         self.grid.mark(self.rx, self.ry)
 
-        # Stuck detection
-        if self._last_x is None:
-            self._last_x, self._last_y = self.rx, self.ry
-        d = math.hypot(self.rx - self._last_x, self.ry - self._last_y)
-        if d > self.stuck_mov:
-            self._last_x, self._last_y = self.rx, self.ry
-            self._stk_ticks = 0
-        else:
-            self._stk_ticks += 1
-
     # Main control loop (20 Hz)
 
     def loop(self):
@@ -274,64 +280,88 @@ class ReactiveExplorer(Node):
         thr = self.obs_thr
         emg = self.emg_thr
 
-        # ============================================================
-        # PRIORITY 1: Emergency collision — reverse immediately
-        # Fires in ANY state except REVERSING
-        # ============================================================
-        if min(front, fl, fr) < emg and self.state != St.REVERSING:
-            # Turn AWAY from the closest obstacle
-            if fl <= fr:
-                self.turn_dir = -1.0
-            else:
-                self.turn_dir = 1.0
-            self.state      = St.REVERSING
-            self._rev_timer = 0.8
-            self.get_logger().warn(
-                f'EMERGENCY  f={front:.2f} fl={fl:.2f} fr={fr:.2f}')
+        # ── Scan-based stuck detection ─────────────────────────────────────────
+        # If ANY scan zone (including sides) stays below emergency threshold
+        # for > _stuck_s seconds in a moving state → force recovery.
+        # This works even when encoder odometry falsely shows movement.
+        moving_state = self.state in (St.EXPLORING, St.AVOIDING, St.REVERSING)
+        any_close = (min(front, fl, fr, left, right) < emg)
+        if any_close and moving_state:
+            self._wall_timer += self.DT
+        else:
+            self._wall_timer = 0.0
 
         # ============================================================
-        # PRIORITY 2: Stuck detection — fires in ANY movement state
+        # PRIORITY 1: Emergency collision — IMMEDIATE reverse
+        # Checks ALL 5 zones. Also fires if scan-stuck timer expires.
         # ============================================================
-        elif self._stk_ticks >= self.stuck_lim \
-                and self.state in (St.EXPLORING, St.AVOIDING):
-            self.turn_dir   = 1.0 if right <= left else -1.0
-            self.state      = St.RECOVERING
-            self._stk_ticks = 0
-            self.get_logger().warn('Stuck — recovery spin')
+        side_emg = emg * 0.85
+        any_emergency = (min(front, fl, fr) < emg
+                         or left  < side_emg
+                         or right < side_emg
+                         or self._wall_timer >= self._stuck_s)
+        if any_emergency and self.state not in (St.REVERSING, St.RECOVERING):
+            # Turn AWAY from the side with the closest obstacle
+            if min(fl, left) <= min(fr, right):
+                self.turn_dir = -1.0   # obstacle on left → turn right
+            else:
+                self.turn_dir = 1.0    # obstacle on right → turn left
+            self.state        = St.REVERSING
+            self._rev_timer   = 0.8
+            self._wall_timer  = 0.0    # reset so we don't re-trigger immediately
+            self.get_logger().warn(
+                f'EMERGENCY/STUCK  f={front:.2f} fl={fl:.2f} fr={fr:.2f} '
+                f'l={left:.2f} r={right:.2f}  wall_t={self._wall_timer:.1f}s')
+
+        # ============================================================
+        # PRIORITY 2: Recovery from REVERSING while still jammed
+        # If scan-stuck fires while we are already reversing, escalate
+        # to full RECOVERING (reverse harder + spin).
+        # ============================================================
+        elif self._wall_timer >= self._stuck_s \
+                and self.state == St.REVERSING:
+            self.turn_dir    = -1.0 if left <= right else 1.0
+            self.state       = St.RECOVERING
+            self._rec_phase  = 0
+            self._rec_timer  = 1.5
+            self._wall_timer = 0.0
+            self.get_logger().warn('Stuck even while reversing — escalate to RECOVERING')
 
         # ============================================================
         # STATE MACHINE
         # ============================================================
 
         if self.state == St.EXPLORING:
-            # Check for obstacles in the forward hemisphere
+            # Resume recording when exploring (may have been paused)
+            self._toggle_rec(True)
+
+            # ── Obstacle ahead? Start turning immediately ──
             obstacle_ahead = (front < thr
-                              or fl < thr * 0.75
-                              or fr < thr * 0.75)
+                              or fl < thr * 0.7
+                              or fr < thr * 0.7)
 
             if obstacle_ahead:
-                # IMMEDIATELY stop and turn
-                self.turn_dir     = self._pick_clear_direction(scan)
+                self.turn_dir     = self._best_open_direction(scan)
                 self.state        = St.AVOIDING
-                self._avoid_timer = 3.0    # Max 3s, exits early when clear
+                self._avoid_timer = 3.0
                 side = 'L' if self.turn_dir > 0 else 'R'
                 self.get_logger().info(
                     f'Obstacle  f={front:.2f} fl={fl:.2f} fr={fr:.2f}'
                     f' → turn {side}')
             else:
-                # Drive forward with wall-following
+                # ── Drive forward ──
                 twist.linear.x = self.v_lin
 
-                # Slow down when obstacles are moderately close
+                # Slow down when approaching obstacles
                 closest_fwd = min(front, fl, fr)
                 if closest_fwd < thr * 1.5:
                     twist.linear.x *= 0.5
 
                 # Wall-following correction
                 if left < self.side_thr:
-                    self._wall_hz = -0.40
+                    self._wall_hz = -0.45
                 elif right < self.side_thr:
-                    self._wall_hz = +0.40
+                    self._wall_hz = +0.45
                 else:
                     self._wall_hz *= 0.80
                     if abs(self._wall_hz) < 0.02:
@@ -340,39 +370,61 @@ class ReactiveExplorer(Node):
                 twist.angular.z = self._wall_hz + random.uniform(-0.03, 0.03)
 
         elif self.state == St.AVOIDING:
+            # Pause recording — robot is turning, no useful new data
+            self._toggle_rec(False)
+
+            # ── Pure in-place rotation — NO forward velocity ──
             self._avoid_timer -= self.DT
+            twist.linear.x  = 0.0
             twist.angular.z = self.v_ang * self.turn_dir
 
-            # Re-check every tick: is the forward path now clear?
-            clear = (front > thr * 1.3
-                     and fl  > thr * 0.9
-                     and fr  > thr * 0.9)
+            # Re-check ALL five zones before resuming forward motion
+            clear = (front > thr * 1.1
+                     and fl    > thr * 0.85
+                     and fr    > thr * 0.85
+                     and left  > side_emg
+                     and right > side_emg)
 
-            if clear and self._avoid_timer < 2.7:
-                # Path is clear AND we've turned for at least 0.3s
+            if clear:
                 self.state = St.EXPLORING
             elif self._avoid_timer <= 0:
-                # Max avoidance time reached, resume anyway
                 self.get_logger().warn('Avoidance timeout — resuming')
                 self.state = St.EXPLORING
 
         elif self.state == St.REVERSING:
+            # Pause recording during reverse
+            self._toggle_rec(False)
+
             self._rev_timer -= self.DT
-            twist.linear.x  = -self.v_lin * 0.7
-            twist.angular.z = self.v_ang * 0.5 * self.turn_dir
+            twist.linear.x  = -self.v_lin * 0.8
+            twist.angular.z = self.v_ang * 0.4 * self.turn_dir
 
             if self._rev_timer <= 0:
-                # After reversing, turn to find clear direction
-                self.turn_dir     = self._pick_clear_direction(scan)
+                self.turn_dir     = self._best_open_direction(scan)
                 self.state        = St.AVOIDING
-                self._avoid_timer = 2.5
+                self._avoid_timer = 2.0
 
         elif self.state == St.RECOVERING:
-            twist.angular.z = self.v_ang * self.turn_dir
-            # Exit when forward is clear
-            if front > thr * 1.2 and fl > thr * 0.9 and fr > thr * 0.9:
-                self.state = St.EXPLORING
-                self._stk_ticks = 0
+            # Pause recording during recovery
+            self._toggle_rec(False)
+
+            # ── Phase 0: Reverse hard to detach ──
+            if self._rec_phase == 0:
+                twist.linear.x  = -self.v_lin * 0.9
+                twist.angular.z = self.v_ang * 0.3 * self.turn_dir
+                self._rec_timer -= self.DT
+                if self._rec_timer <= 0:
+                    self._rec_phase = 1
+                    self._rec_timer = 1.5
+            # ── Phase 1: Spin to find clear heading ──
+            else:
+                twist.angular.z = self.v_ang * self.turn_dir
+                self._rec_timer -= self.DT
+                if (front > thr * 1.1 and fl > thr * 0.85 and fr > thr * 0.85
+                        and left > side_emg and right > side_emg) \
+                        or self._rec_timer <= 0:
+                    self.state       = St.EXPLORING
+                    self._wall_timer = 0.0
 
         self.cmd_pub.publish(twist)
 

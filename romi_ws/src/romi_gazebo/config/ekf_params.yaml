@@ -1,0 +1,196 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# ekf_params.yaml  —  robot_localization EKF configuration for Romi
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# WHAT IS AN EKF?
+# ───────────────
+# An Extended Kalman Filter is a mathematical algorithm that fuses multiple
+# noisy sensor readings into one best-guess state estimate.
+#
+# It maintains a STATE VECTOR:
+#   [x, y, z, roll, pitch, yaw, vx, vy, vz, vroll, vpitch, vyaw, ax, ay, az]
+#   (in 2D mode z/roll/pitch/vz/vroll/vpitch/az are locked to 0)
+#
+# Every sensor reading is a MEASUREMENT of some elements of that state.
+# The EKF PREDICTS the state forward in time using a motion model,
+# then CORRECTS the prediction using each measurement, weighted by confidence.
+#
+# WHY DOES THIS FIX YOUR MAP?
+# ───────────────────────────
+# Your map was rotating because:
+#   • Wheel odometry accumulates yaw error (slip, PID noise)
+#   • SLAM receives this noisy yaw → the map→odom transform drifts
+#
+# The IMU measures angular velocity (yaw rate) at 100 Hz with very low noise
+# (stddev = 0.01 rad/s). Fusing it with wheel odometry gives a yaw estimate
+# that is 3–5× more accurate, directly reducing the map rotation problem.
+#
+# SENSOR CONFIG ARRAYS (15 elements each):
+# ─────────────────────────────────────────
+# Position:  [x,  y,  z,  roll, pitch, yaw ]
+# Velocity:  [vx, vy, vz, vroll, vpitch, vyaw]
+# Accel:     [ax, ay, az]
+# true = "use this measurement from this sensor"
+# false = "ignore this measurement from this sensor"
+# ─────────────────────────────────────────────────────────────────────────────
+
+ekf_filter_node:
+  ros__parameters:
+
+    use_sim_time: true
+
+    # ── Output rate ───────────────────────────────────────────────────────────
+    # 30 Hz is enough for SLAM (which runs at ~10 Hz) and navigation.
+    # Higher than the slowest sensor (odometry at ~20 Hz), lower than
+    # the fastest (IMU at 100 Hz) — EKF interpolates between measurements.
+    frequency: 30.0
+
+    # How long to wait for a sensor before declaring it timed out (seconds).
+    sensor_timeout: 0.1
+
+    # ── Robot geometry ────────────────────────────────────────────────────────
+    # two_d_mode = true means z, roll, pitch are ignored.
+    # Romi is a flat differential-drive robot — always true for us.
+    two_d_mode: true
+
+    # ── Frame names ───────────────────────────────────────────────────────────
+    map_frame:       map        # global fixed frame (SLAM publishes map→odom)
+    odom_frame:      odom       # local fixed frame (EKF publishes odom→base_link)
+    base_link_frame: base_link  # robot body frame
+    world_frame:     odom       # EKF estimates pose in the odom frame
+
+    # ── TF publishing ─────────────────────────────────────────────────────────
+    # publish_tf: false → odom_to_tf.py handles the odom→base_link TF.
+    # The EKF only publishes /odometry/filtered for downstream consumers.
+    # This avoids TF conflicts and frame_id mismatch issues.
+    publish_tf: false
+    publish_acceleration: false
+
+    # Small offset added to output TF timestamp to prevent
+    # TF_EXTRAPOLATION_INTO_FUTURE errors in downstream nodes.
+    transform_time_offset: 0.0
+    transform_timeout: 0.05
+
+    # ── Sensor 1: Wheel Odometry ──────────────────────────────────────────────
+    # Topic published by the RomiEncoderPlugin via ros_gz_bridge.
+    # The plugin reads ground-truth pose from Gazebo physics AND computes
+    # wheel velocities from PID-controlled joint speeds.
+    #
+    # We use: x, y (position), yaw (heading), vx (linear vel), vyaw (ang vel)
+    # We skip: z, roll, pitch (2D robot), vy (diff drive can't slide sideways),
+    #          accelerations (encoder can't measure these)
+    #
+    # Config array:
+    # [x,    y,     z,     roll,  pitch, yaw,   vx,    vy,    vz,
+    #  vroll, vpitch, vyaw,  ax,    ay,    az   ]
+    odometry0: /model/romi/odometry
+    odometry0_config: [true,  true,  false,
+                       false, false, true,
+                       true,  false, false,
+                       false, false, true,
+                       false, false, false]
+
+    # differential: false = measurements are in the odometry (world) frame
+    # relative: false = measurements are absolute, not relative to last reading
+    odometry0_differential: false
+    odometry0_relative: false
+    odometry0_queue_size: 10
+
+    # Pose covariance: how much we trust the odometry POSITION & HEADING.
+    # The encoder plugin reads ground-truth pose so position is reliable.
+    # Yaw has ~0.02 rad stddev → variance = 0.0004
+    # Format: [x_var, y_var, z_var, roll_var, pitch_var, yaw_var,
+    #          vx_var, vy_var, vz_var, vroll_var, vpitch_var, vyaw_var,
+    #          ax_var, ay_var, az_var]
+    # (6x6 pose matrix diagonal, then 6x6 twist matrix diagonal)
+    odometry0_pose_rejection_threshold: 5.0
+    odometry0_twist_rejection_threshold: 1.0
+
+    # ── Sensor 2: IMU ─────────────────────────────────────────────────────────
+    # Published at 100 Hz from Gazebo's ignition-gazebo-imu-system plugin.
+    # Mounted on imu_link (fixed 0.03 m above sensor_mount on base_link).
+    # Noise stddev from SDF: angular_velocity = 0.01 rad/s,
+    #                        linear_acceleration = 0.01 m/s²
+    #
+    # We use: vyaw (angular velocity Z) — high-frequency yaw rate correction
+    #         ax, ay (linear acceleration) — velocity correction
+    # We skip: orientation (yaw from odometry is more reliable in sim),
+    #          roll/pitch (2D mode ignores them anyway)
+    #
+    # WHY NOT USE IMU ORIENTATION?
+    # The IMU yaw from Gazebo is in the world frame (initialized to 0 at
+    # simulation start). The odometry yaw is ALSO initialized to 0.
+    # In theory they match — but in practice using both can cause the EKF
+    # to fight itself if there's any tiny startup misalignment.
+    # Using only angular velocity (rate) is safer and still very effective.
+    #
+    # Config array:
+    # [x,    y,     z,     roll,  pitch, yaw,   vx,    vy,    vz,
+    #  vroll, vpitch, vyaw,  ax,    ay,    az   ]
+    imu0: /imu
+    imu0_config: [false, false, false,
+                  false, false, false,
+                  false, false, false,
+                  false, false, true,
+                  true,  true,  false]
+
+    imu0_differential: false
+    imu0_relative: false
+
+    # Remove gravity from linear acceleration measurements.
+    # Gazebo's IMU includes the 9.81 m/s² gravitational component — if we
+    # don't remove it, the EKF thinks the robot is constantly accelerating.
+    imu0_remove_gravitational_acceleration: true
+
+    imu0_queue_size: 10
+    imu0_pose_rejection_threshold: 5.0
+    imu0_twist_rejection_threshold: 1.0
+
+    # ── Process noise covariance ──────────────────────────────────────────────
+    # This matrix describes how much the state can change between predictions.
+    # Think of it as: "how wrong can our motion model be per second?"
+    # 15x15 diagonal, same order as state vector.
+    # Values are variances (stddev²) per second.
+    #
+    # x, y: 0.05² = 0.0025 (robot drifts ~5cm/s if we had no correction)
+    # yaw:  0.03² = 0.0009 (yaw drifts ~1.7°/s without correction — the KEY one)
+    # vx:   0.1²  = 0.01   (velocity can change quickly)
+    # vyaw: 0.05² = 0.0025
+    process_noise_covariance: [
+      0.0025, 0.0,    0.0, 0.0, 0.0, 0.0,    0.0,  0.0, 0.0, 0.0, 0.0, 0.0,    0.0, 0.0, 0.0,
+      0.0,    0.0025, 0.0, 0.0, 0.0, 0.0,    0.0,  0.0, 0.0, 0.0, 0.0, 0.0,    0.0, 0.0, 0.0,
+      0.0,    0.0,    0.0, 0.0, 0.0, 0.0,    0.0,  0.0, 0.0, 0.0, 0.0, 0.0,    0.0, 0.0, 0.0,
+      0.0,    0.0,    0.0, 0.0, 0.0, 0.0,    0.0,  0.0, 0.0, 0.0, 0.0, 0.0,    0.0, 0.0, 0.0,
+      0.0,    0.0,    0.0, 0.0, 0.0, 0.0,    0.0,  0.0, 0.0, 0.0, 0.0, 0.0,    0.0, 0.0, 0.0,
+      0.0,    0.0,    0.0, 0.0, 0.0, 0.0009, 0.0,  0.0, 0.0, 0.0, 0.0, 0.0,    0.0, 0.0, 0.0,
+      0.0,    0.0,    0.0, 0.0, 0.0, 0.0,    0.01, 0.0, 0.0, 0.0, 0.0, 0.0,    0.0, 0.0, 0.0,
+      0.0,    0.0,    0.0, 0.0, 0.0, 0.0,    0.0,  0.0, 0.0, 0.0, 0.0, 0.0,    0.0, 0.0, 0.0,
+      0.0,    0.0,    0.0, 0.0, 0.0, 0.0,    0.0,  0.0, 0.0, 0.0, 0.0, 0.0,    0.0, 0.0, 0.0,
+      0.0,    0.0,    0.0, 0.0, 0.0, 0.0,    0.0,  0.0, 0.0, 0.0, 0.0, 0.0,    0.0, 0.0, 0.0,
+      0.0,    0.0,    0.0, 0.0, 0.0, 0.0,    0.0,  0.0, 0.0, 0.0, 0.0, 0.0,    0.0, 0.0, 0.0,
+      0.0,    0.0,    0.0, 0.0, 0.0, 0.0,    0.0,  0.0, 0.0, 0.0, 0.0, 0.0025, 0.0, 0.0, 0.0,
+      0.0,    0.0,    0.0, 0.0, 0.0, 0.0,    0.0,  0.0, 0.0, 0.0, 0.0, 0.0,    0.0, 0.0, 0.0,
+      0.0,    0.0,    0.0, 0.0, 0.0, 0.0,    0.0,  0.0, 0.0, 0.0, 0.0, 0.0,    0.0, 0.0, 0.0,
+      0.0,    0.0,    0.0, 0.0, 0.0, 0.0,    0.0,  0.0, 0.0, 0.0, 0.0, 0.0,    0.0, 0.0, 0.0
+    ]
+
+    # ── Initial state covariance ──────────────────────────────────────────────
+    # How uncertain are we about the robot's state at t=0?
+    # We know exactly where it starts (Gazebo spawn pose) so these are small.
+    initial_estimate_covariance: [
+      0.01, 0.0,  0.0, 0.0, 0.0, 0.0,  0.0,  0.0, 0.0, 0.0, 0.0, 0.0,  0.0, 0.0, 0.0,
+      0.0,  0.01, 0.0, 0.0, 0.0, 0.0,  0.0,  0.0, 0.0, 0.0, 0.0, 0.0,  0.0, 0.0, 0.0,
+      0.0,  0.0,  0.0, 0.0, 0.0, 0.0,  0.0,  0.0, 0.0, 0.0, 0.0, 0.0,  0.0, 0.0, 0.0,
+      0.0,  0.0,  0.0, 0.0, 0.0, 0.0,  0.0,  0.0, 0.0, 0.0, 0.0, 0.0,  0.0, 0.0, 0.0,
+      0.0,  0.0,  0.0, 0.0, 0.0, 0.0,  0.0,  0.0, 0.0, 0.0, 0.0, 0.0,  0.0, 0.0, 0.0,
+      0.0,  0.0,  0.0, 0.0, 0.0, 0.01, 0.0,  0.0, 0.0, 0.0, 0.0, 0.0,  0.0, 0.0, 0.0,
+      0.0,  0.0,  0.0, 0.0, 0.0, 0.0,  0.01, 0.0, 0.0, 0.0, 0.0, 0.0,  0.0, 0.0, 0.0,
+      0.0,  0.0,  0.0, 0.0, 0.0, 0.0,  0.0,  0.0, 0.0, 0.0, 0.0, 0.0,  0.0, 0.0, 0.0,
+      0.0,  0.0,  0.0, 0.0, 0.0, 0.0,  0.0,  0.0, 0.0, 0.0, 0.0, 0.0,  0.0, 0.0, 0.0,
+      0.0,  0.0,  0.0, 0.0, 0.0, 0.0,  0.0,  0.0, 0.0, 0.0, 0.0, 0.0,  0.0, 0.0, 0.0,
+      0.0,  0.0,  0.0, 0.0, 0.0, 0.0,  0.0,  0.0, 0.0, 0.0, 0.0, 0.0,  0.0, 0.0, 0.0,
+      0.0,  0.0,  0.0, 0.0, 0.0, 0.0,  0.0,  0.0, 0.0, 0.0, 0.0, 0.01, 0.0, 0.0, 0.0,
+      0.0,  0.0,  0.0, 0.0, 0.0, 0.0,  0.0,  0.0, 0.0, 0.0, 0.0, 0.0,  0.0, 0.0, 0.0,
+      0.0,  0.0,  0.0, 0.0, 0.0, 0.0,  0.0,  0.0, 0.0, 0.0, 0.0, 0.0,  0.0, 0.0, 0.0,
+      0.0,  0.0,  0.0, 0.0, 0.0, 0.0,  0.0,  0.0, 0.0, 0.0, 0.0, 0.0,  0.0, 0.0, 0.0
+    ]

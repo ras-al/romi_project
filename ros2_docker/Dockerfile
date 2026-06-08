@@ -45,6 +45,7 @@ RUN apt-get update && apt-get install -y \
     ros-humble-rviz2 \
     ros-humble-slam-toolbox \
     ros-humble-nav2-map-server \
+    ros-humble-robot-localization \
     python3-opencv \
     # Qt5 development packages for building qt_cpp
     libqt5serialport5-dev \
