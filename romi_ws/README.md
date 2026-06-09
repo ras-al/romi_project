@@ -41,33 +41,41 @@ The system is designed in a modular, distributed architecture across several ROS
 
 ---
 
-## Autonomy Working Principles (Algorithms & Concepts)
+## Algorithms & Autonomy Working Principles
 
-The exploration engine is fundamentally built around a **Hybrid Potential Field + State Machine** architecture. 
+The exploration engine relies on a fusion of classical robotics state estimation and a custom **Hybrid Potential Field + State Machine** architecture for navigation. 
 
-### 1. Reactive Potential-Field Steering
-Instead of relying on rigid, discrete turn states (which cause jerky "stop-and-spin" behavior), Romi uses continuous, proportional steering:
-- **Repulsive Forces**: The LiDAR field is divided into 7 sectors (front, front-left, front-right, left, right, rear-left, rear-right). Obstacles within an influence radius (`obstacle_threshold`) exert a repulsive force inversely proportional to distance ($\propto 1/d$).
-- **Curvature Control**: Lateral obstacles push the robot toward the center of passages, naturally enabling smooth, continuous curvature around corners. 
+### 1. Extended Kalman Filter (EKF)
+Used for State Estimation via the `robot_localization` package. 
+- Wheel encoders alone suffer from drift (slip over time). 
+- The EKF algorithm mathematically fuses the raw wheel odometry with the high-frequency angular velocity from the IMU to output a highly stable, drift-compensated pose (`/odometry/filtered`).
+
+### 2. 2D SLAM (Simultaneous Localization and Mapping)
+Provided by the `slam_toolbox` package.
+- It takes the EKF-filtered odometry and the 2D LiDAR scans and uses them to asynchronously build an occupancy grid (`/map`) of the environment while simultaneously tracking the robot's location within that emerging map.
+
+### 3. Hybrid Potential-Field Steering (Reactive Navigation)
+This is the primary algorithm driving the robot. Instead of plotting a rigid path, it uses the 2D LiDAR to create a "force field" around the robot:
+- **Repulsive Forces**: The LiDAR field is divided into 7 sectors. Obstacles within an influence radius (`obstacle_threshold`) exert a repulsive force inversely proportional to distance ($\propto 1/d$).
+- **Curvature Control**: These forces are summed together to create continuous, smooth steering vectors, allowing the robot to naturally "curve" around corners and obstacles without having to stop to turn.
 - **Velocity Profiling**: Linear velocity is directly proportional to forward clearance. The robot sprints in open areas and crawls through narrow gaps.
 
-### 2. Coverage Grid & Novelty Steering
-Pure potential fields can cause a robot to bounce back and forth in a known area. To solve this, Romi implements a **Coverage Grid**:
-- **Discretization**: The world is divided into a spatial hash map of 0.5m² cells. As the robot traverses, cells are marked as `visited`.
-- **Lookahead Bias (Novelty Score)**: The robot projects a 4.0m ray into the left and right diagonal quadrants. It counts the number of *unvisited* cells along each ray. The quadrant with higher "novelty" applies a continuous rotational bias to the potential field, gently steering the robot toward unexplored territory without requiring hard state changes.
+### 4. Coverage Grid & Novelty-Biased Exploration
+To ensure the robot doesn't just drive in circles in a safe area, we built a custom exploration algorithm based on **Spatial Hashing** and **Frontier Exploration**:
+- **Discretization**: The world is divided into a spatial hash map of 0.5m grid cells. As the robot traverses, cells are marked as `visited`.
+- **Lookahead Bias (Novelty Score)**: The robot projects a 4.0m ray into the left and right diagonal quadrants. It counts the number of *unvisited* cells along each ray. 
+- **Attractive Force**: This novelty score is converted into an attractive force that applies a continuous rotational bias to the potential field, gently steering the robot toward unexplored territory without requiring hard state changes.
 
-### 3. Kinematic Dimension & Gap-Width Checks
+### 5. Kinematic Displacement Watchdog
+A deterministic safety algorithm we wrote to detect "stuck" states:
+- It tracks the robot's Cartesian displacement ($d = \sqrt{(x_2 - x_1)^2 + (y_2 - y_1)^2}$) over a rolling 5-second window. 
+- If the robot moves less than 0.08m despite the motors being active, the algorithm concludes the robot is trapped and overrides the potential field with a decisive `SPINNING` or `REVERSING` escape sequence.
+
+### 6. Kinematic Dimension & Gap-Width Checks
 Romi is physically aware of its own dimensions:
 - **Chassis Width**: 0.16m
-- **Body Extent**: 0.08m from LiDAR center.
 - **Minimum Safe Passage**: Computed dynamically as chassis width plus a clearance margin (`MIN_PASSAGE = 0.30m`). 
 The robot continuously sums the left and right lateral distances. If the total passage width is less than `0.30m`, the robot refuses entry, drastically reducing lateral collisions with thin poles and table legs.
-
-### 4. Deterministic State Machine (Escape & Recovery)
-While the potential field handles smooth driving, the state machine handles catastrophic recoveries:
-- **DRIVING**: Active potential-field control.
-- **SPINNING**: Triggered by the *Kinematic Displacement Watchdog* (if the robot moves < 0.08m in 5 seconds despite issuing forward velocity) or the *Coverage Watchdog* (no new grid cells discovered for 50s). The robot executes a decisive in-place rotation to find a new vector.
-- **REVERSING**: Triggered by extreme proximity. If an obstacle breaches the `emergency_threshold` (0.22m) or the LiDAR detects saturated, below-min-range rays (indicating physical contact), the robot immediately reverses backward for 1.2 seconds before spinning away.
 
 ---
 
