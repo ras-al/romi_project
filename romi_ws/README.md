@@ -1,57 +1,135 @@
-# Romi Autonomous Exploration & Mapping
+# Romi Autonomous Exploration & Mapping Pipeline
 
-This workspace contains the complete ROS 2 (Humble) + Gazebo Ignition (Fortress) simulation environment for the Romi differential drive robot. It features a fully autonomous exploration algorithm based on reactive potential-field steering, a robust 2D SLAM pipeline, and a comprehensive 3D dataset recording system.
+This workspace contains a production-ready ROS 2 (Humble) + Gazebo Ignition (Fortress) environment for the Romi differential drive robot. It leverages a fully autonomous exploration architecture based on reactive potential-field steering, coverage-based novelty guidance, a robust 2D SLAM pipeline, and a comprehensive 3D dataset recording system for structure-from-motion (SfM) pipelines.
 
-## Architecture Overview
+##  Architecture Overview
 
-1. **Simulation Engine**: Gazebo Ignition Fortress (`ros_gz_sim`). The primary environment is a warehouse depot (`tugbot_depot.sdf`) where the Romi robot is spawned.
-2. **Robot Model**: A custom URDF (`romi_meshes.urdf`) containing the physical specifications of Romi. The model is equipped with:
-   - **Differential Drive Encoders**: A custom C++ plugin (`romi_encoder_plugin.cpp`) simulates precise odometry and interfaces with ROS 2 via `cmd_vel` and `odom`.
-   - **Sensor Suite**:
-     - 2D LiDAR (360° scan)
-     - RealSense Depth & RGB Camera
-     - IMU
-3. **State Estimation**: An Extended Kalman Filter (`robot_localization`) fuses wheel odometry and IMU angular velocities to produce highly stable continuous transforms (`/odometry/filtered`).
-4. **Bridge Node**: `ros_gz_bridge` is used to pass messages (Odometry, LiDAR, Camera, TF) between the Ignition transport layer and ROS 2 topics.
-5. **Mapping**: `slam_toolbox` (async) consumes the filtered LiDAR scans and EKF odometry to generate a high-fidelity 2D occupancy grid of the environment.
+The system is designed in a modular, distributed architecture across several ROS 2 nodes, communicating via DDS:
 
-## Autonomous Exploration Architecture
+1. **Simulation Engine (`ros_gz_sim`)**: Gazebo Ignition Fortress simulates the environment (`tugbot_depot.sdf`), handling physics, collision intersections, and rendering.
+2. **Robot Model (`romi_meshes.urdf`)**: A customized URDF representing Romi. The chassis dimensions are explicitly defined (0.16m width) to allow physics-aware navigation. 
+3. **Sensor Plugins**:
+   - **Custom Differential Drive C++ Plugin** (`romi_encoder_plugin.cpp`): Simulates wheel encoders and provides raw odometry (`/model/romi/odometry`).
+   - **2D GPU LiDAR**: 360° scan array.
+   - **RealSense RGB-D Camera**: Point clouds (`/depth_camera/points`), RGB images (`/depth_camera/image`), and Depth Maps (`/depth_camera/depth_image`).
+   - **IMU**: High-frequency acceleration and angular velocity data.
+4. **State Estimation (`robot_localization`)**: An Extended Kalman Filter (EKF) fuses raw wheel odometry with IMU data to produce a highly stable, drift-compensated transform (`/odometry/filtered`).
+5. **Autonomy Engine (`autonomous_explorer.py`)**: The brain of the operation. Consumes LiDAR and Odometry to generate `/cmd_vel` vectors using a Hybrid Potential-Field algorithm.
+6. **Data Recorder (`data_recorder.py`)**: A synchronous, non-blocking node that captures synchronized sensor outputs to disk, formatting them specifically for downstream 3D reconstruction (e.g., COLMAP, NeRF).
+7. **Mapping (`slam_toolbox`)**: Asynchronous 2D SLAM node that builds an occupancy grid (`/map`) of the environment using the filtered odometry and LiDAR scans.
 
-The robot's navigation is governed by `autonomous_explorer.py`. Previous iterations relied on a fragile multi-state sequence. The current architecture employs a continuous, physics-aware **Reactive Potential-Field Steering** system to gracefully maneuver through complex environments.
+---
 
-### Physics-Aware Navigation
-Navigation thresholds are strictly derived from the robot's physical dimensions (extracted from `tugbot_depot.sdf`):
-- **Chassis Dimensions**: 0.16m × 0.12m × 0.04m
-- **Body Extent**: 0.08m from the LiDAR center to the lateral edge.
-- **Minimum Safe Passage**: Computed as body width plus a dynamic clearance margin (`MIN_SIDE_DIST = 0.20m`). 
+## System Schema & Data Flow
 
-A dedicated **Gap-Width Check** ensures the robot proactively refuses to enter passages narrower than its physical dimensions, resolving the issue of lateral collisions against vertical supports.
+```text
+[Gazebo Simulation]
+       │
+       ├─> (Raw Odom) ─────> [ EKF Node ] ─────> (Filtered Odom) ────┬────> [ autonomous_explorer.py ]
+       ├─> (IMU) ──────────> (robot_localization)                    │                  │
+       ├─> (2D LiDAR) ───────────────────────────────────────────────┤                  V
+       │                                                             │             (Twist Cmd)
+       ├─> (RGB Image) ────┐                                         │                  │
+       ├─> (Depth Image) ──┼─────────────────────────────────────────┼──────> [ Gazebo /cmd_vel ]
+       ├─> (Point Cloud) ──┘                                         │
+       │                                                             │
+       └─> [ data_recorder.py ] <────────────────────────────────────┘
+                  │
+                  V
+     [ SSD Storage: data/romi_capture_YYYYMMDD_HHMMSS/ ]
+```
 
-### Reactive Control Loop
-The main control loop evaluates 7 discrete radial sectors from the 2D LiDAR to generate continuous steering vectors:
-- **Repulsive Steering**: Obstacles within the influence radius exert a repulsive force inversely proportional to distance ($\propto \frac{1}{d^2}$). Lateral obstacles push the robot toward the center of passages, enabling smooth, continuous curvature around corners rather than abrupt stop-and-spin maneuvers.
-- **Dynamic Velocity Profiling**: Linear velocity scales proportionally with forward clearance. Wide-open spaces allow maximum velocity, while confined spaces induce a controlled crawl.
+---
 
-### State Machine
-The state machine has been streamlined to just two primary states:
-1. `DRIVING`: The default state. The robot continuously computes potential-field steering and velocity. If the forward path is obstructed, it evaluates the surrounding grid to prioritize turning toward unexplored areas using the `CoverageGrid` logic.
-2. `REVERSING`: Triggered strictly as a safety override. If an obstacle breaches the `emergency_threshold` (0.20m) or if the scan-based stuck timer detects proximity for > 0.5s, the robot executes an immediate reverse trajectory. If reversing fails to clear the obstruction, it recursively flips direction to disentangle itself from complex geometric traps.
+## Autonomy Working Principles (Algorithms & Concepts)
 
-### Coverage Grid
-To ensure exhaustive exploration, the robot tracks visited regions using a discrete `CoverageGrid`. When forced to decide between multiple clear paths, it scores directions by casting a lookahead vector and counting unexplored cells, naturally guiding the robot into uncharted territory.
+The exploration engine is fundamentally built around a **Hybrid Potential Field + State Machine** architecture. 
 
-## Data Collection Pipeline
+### 1. Reactive Potential-Field Steering
+Instead of relying on rigid, discrete turn states (which cause jerky "stop-and-spin" behavior), Romi uses continuous, proportional steering:
+- **Repulsive Forces**: The LiDAR field is divided into 7 sectors (front, front-left, front-right, left, right, rear-left, rear-right). Obstacles within an influence radius (`obstacle_threshold`) exert a repulsive force inversely proportional to distance ($\propto 1/d$).
+- **Curvature Control**: Lateral obstacles push the robot toward the center of passages, naturally enabling smooth, continuous curvature around corners. 
+- **Velocity Profiling**: Linear velocity is directly proportional to forward clearance. The robot sprints in open areas and crawls through narrow gaps.
 
-For 3D reconstruction pipelines (NeRF, Gaussian Splatting, COLMAP), `data_recorder.py` runs synchronously in the background. To optimize data quality and storage, recording automatically pauses during `REVERSING` or tight maneuvers, capturing only progressive exploration data.
+### 2. Coverage Grid & Novelty Steering
+Pure potential fields can cause a robot to bounce back and forth in a known area. To solve this, Romi implements a **Coverage Grid**:
+- **Discretization**: The world is divided into a spatial hash map of 0.5m² cells. As the robot traverses, cells are marked as `visited`.
+- **Lookahead Bias (Novelty Score)**: The robot projects a 4.0m ray into the left and right diagonal quadrants. It counts the number of *unvisited* cells along each ray. The quadrant with higher "novelty" applies a continuous rotational bias to the potential field, gently steering the robot toward unexplored territory without requiring hard state changes.
 
-When the exploration finishes, the `data/romi_capture_YYYYMMDD_HHMMSS/` directory contains:
-- `pointclouds/`: Binary little-endian PLY files (`cloud_XXXXXX.ply`) containing XYZ points and RGB color data. Binary PLYs are 5x smaller and 10x faster to write than ASCII.
-- `images/`: Raw JPEG frames (`frame_XXXXXX.jpg`) synced exactly with the point clouds. Essential for texture generation in COLMAP.
-- `camera_info.json`: The RealSense camera intrinsics (`fx`, `fy`, `cx`, `cy`, width, height).
-- `images.txt`: Extrinsic camera poses written directly in COLMAP text format (`QW QX QY QZ TX TY TZ 1 filename`). This saves pipeline engineers from writing custom conversion scripts.
-- `odometry.csv`, `odometry_raw.csv`, `imu.csv` & `ground_truth.csv`: High-frequency synchronized trajectory and sensor data.
+### 3. Kinematic Dimension & Gap-Width Checks
+Romi is physically aware of its own dimensions:
+- **Chassis Width**: 0.16m
+- **Body Extent**: 0.08m from LiDAR center.
+- **Minimum Safe Passage**: Computed dynamically as chassis width plus a clearance margin (`MIN_PASSAGE = 0.30m`). 
+The robot continuously sums the left and right lateral distances. If the total passage width is less than `0.30m`, the robot refuses entry, drastically reducing lateral collisions with thin poles and table legs.
 
-## Deployment Notes
+### 4. Deterministic State Machine (Escape & Recovery)
+While the potential field handles smooth driving, the state machine handles catastrophic recoveries:
+- **DRIVING**: Active potential-field control.
+- **SPINNING**: Triggered by the *Kinematic Displacement Watchdog* (if the robot moves < 0.08m in 5 seconds despite issuing forward velocity) or the *Coverage Watchdog* (no new grid cells discovered for 50s). The robot executes a decisive in-place rotation to find a new vector.
+- **REVERSING**: Triggered by extreme proximity. If an obstacle breaches the `emergency_threshold` (0.22m) or the LiDAR detects saturated, below-min-range rays (indicating physical contact), the robot immediately reverses backward for 1.2 seconds before spinning away.
 
-1. **EKF Covariance Tuning**: Ensure all covariances in `ekf_params.yaml` use explicit floating-point representation (`0.0`) to satisfy strict ROS 2 type-checking.
-2. **Session Recording**: The data recorder manages a single persistent session per launch. Pausing and resuming operations append to the existing trajectory, maintaining continuous frame indices.
+---
+
+## Challenges Faced & Solved
+
+1. **The LiDAR "Blind Spot" Bug (Min Range Satiation)**
+   - **Challenge:** The robot kept ramming into thin vertical poles. Logs showed the robot believed the path was `inf` (completely clear).
+   - **Cause:** The LiDAR hardware configuration had a `min_range` of `0.12m`. When Romi's physical bumper (which extends `0.08m`) touched a pole, the pole was `0.08m` from the LiDAR sensor. Because `0.08m < 0.12m`, the LiDAR reported values below `min_range`. The code filtered these out as "invalid", resulting in an empty array, which mathematically resolved to `infinity` (clear path).
+   - **Solution:** Modified the `_zone()` function. If even a *single ray* in a sector registers a value less than or equal to `scan.range_min`, the code overrides the distance to `0.05m` (contact distance), instantly triggering a violent REVERSING maneuver.
+
+2. **Force-Cancellation Stalling**
+   - **Challenge:** In perfect corners, the repulsive force from the front wall and side wall mathematically canceled out to a `0.0` steering vector, causing the robot to drive straight into the corner and get stuck.
+   - **Solution:** Implemented a **Force Cancellation Deadzone**. If forward clearance is low but the net steering vector is near zero, the algorithm injects a synthetic `0.8 rad/s` rotation based on whichever side has slightly more clearance, forcing the robot out of equilibrium.
+
+3. **Data Overwriting & File Desynchronization**
+   - **Challenge:** Restarting the node via `Ctrl+C` caused the data recorder to overwrite the previous session's directory, destroying hours of 3D reconstruction data.
+   - **Solution:** Rewrote `data_recorder.py` to use absolute workspace resolution and timestamped directories (`romi_capture_YYYYMMDD_HHMMSS`). A safety `while candidate.exists():` loop guarantees an index suffix (`_1`, `_2`) is appended if two sessions start in the exact same second.
+
+---
+
+## System Paths
+
+- **Core Launch File:** `src/romi_gazebo/launch/romi_control.launch.py`
+- **Gazebo World Definition:** `src/romi_gazebo/models/tugbot_depot.sdf`
+- **Autonomy Engine:** `src/romi_gazebo/scripts/autonomous_explorer.py`
+- **Data Pipeline:** `src/romi_gazebo/scripts/data_recorder.py`
+- **EKF Configuration:** `src/romi_gazebo/config/ekf_params.yaml`
+- **URDF / Robot Model:** `src/romi_gazebo/urdf/romi_meshes.urdf`
+
+---
+
+## Outputs & Dataset Format
+
+All data is recorded cleanly into a session-specific folder within the workspace root.
+
+**Example Output Path:**
+`~/Documents/robotics/romi_project/romi_ws/data/romi_capture_20260608_185435/`
+
+### Output Placeholder Schema
+
+```text
+romi_capture_YYYYMMDD_HHMMSS/
+├── camera_info.json         # RealSense intrinsics (fx, fy, cx, cy, distortion)
+├── images.txt               # COLMAP-ready extrinsic poses (ID QW QX QY QZ TX TY TZ 1 NAME)
+├── ground_truth.csv         # Raw Gazebo World coordinates (X, Y, Z, QX, QY, QZ, QW)
+├── imu.csv                  # 100Hz acceleration and gyroscope vectors
+├── odometry.csv             # EKF-Filtered odometry
+├── odometry_raw.csv         # Direct wheel-encoder odometry (for drift analysis)
+├── trajectory.csv           # Cleaned X,Y,Z,Q path history
+├── transforms.csv           # Sensor-to-Odom TF tree lookups (time-synced)
+├── images/
+│   ├── rgb/                 # Synchronized 8-bit JPEG RGB frames
+│   │   ├── frame_000000.jpg
+│   │   └── frame_000001.jpg
+│   └── depth/               # Synchronized 16-bit PNG Depth maps (in millimetres)
+│       ├── frame_000000.png
+│       └── frame_000001.png
+└── pointclouds/             # Binary Little-Endian PLY files (XYZ + RGB)
+    ├── cloud_000000.ply
+    └── cloud_000001.ply
+```
+
+*(Note: Point clouds are saved in binary little-endian format to reduce disk I/O latency, making them 5x smaller and 10x faster to write than ASCII PLYs. Depth maps are converted from Gazebo 32FC1 floats to 16UC1 millimetres, complying with standard Open3D and BundleFusion pipelines).*
+
+![alt text](image.jpeg)
