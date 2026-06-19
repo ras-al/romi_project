@@ -67,6 +67,7 @@ install(PROGRAMS
   scripts/data_recorder.py
   scripts/autonomous_explorer.py
   scripts/scan_frame_remapper.py
+  scripts/splatam_live_node.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
